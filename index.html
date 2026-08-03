@@ -180,20 +180,20 @@
               <dt class="stat__label">Datasets</dt>
               <!-- main.ts writes the live catalogue total here; until it does,
                    style.css renders a figure-shaped skeleton in its place. -->
-              <dd class="stat__value"><span id="total"></span></dd>
+              <dd class="stat__value"><span class="figure" id="total"></span></dd>
             </div>
             <div class="ledger__stat">
               <dt class="stat__label">Channels</dt>
               <!-- Derived from catalogue.ts (themes().length) by the boot
                    module below rather than hardcoded, so this stays true if
                    the upstream catalogue ever adds or retires a theme. -->
-              <dd class="stat__value"><span id="channels-total"></span></dd>
+              <dd class="stat__value"><span class="figure" id="channels-total"></span></dd>
             </div>
             <div class="ledger__stat">
               <dt class="stat__label">Tiers</dt>
               <!-- Derived from catalogue.ts (scopes().length) for the same
                    reason as Channels, above. -->
-              <dd class="stat__value"><span id="tiers-total"></span></dd>
+              <dd class="stat__value"><span class="figure" id="tiers-total"></span></dd>
             </div>
           </dl>
         </div>
@@ -202,9 +202,25 @@
     </header>
 
     <main>
-      <section class="hero panel" aria-labelledby="hero-title">
+      <!-- The briefing is a disclosure, closed on first paint: the masthead
+           above already carries the title, one-line orientation, search and
+           the live ledger, so the searchable catalogue below (#app) is the
+           first thing in view at any width instead of sitting under a
+           landing-page-sized hero. Nothing here is lost — it's one tap away —
+           and the summary row still gives first paint a considered feel. -->
+      <details class="hero panel">
+        <summary class="hero__summary">
+          <span class="hero__summary-text">
+            <span class="eyebrow">Briefing &amp; legend</span>
+            <span class="hero__summary-hint">How the tier stripe and hazard-channel dot on each card read</span>
+          </span>
+          <svg class="icon hero__chevron" aria-hidden="true" focusable="false">
+            <use href="#icon-chevron" />
+          </svg>
+        </summary>
+
+        <div class="hero__content">
         <div class="hero__lead">
-          <p class="eyebrow">Briefing</p>
           <h2 id="hero-title" class="hero__title">
             Hazard data for Wellington is published by three agencies, in seven themes,
             across <em>67 separate services</em>.
@@ -213,40 +229,90 @@
             This board pulls all of them into one index. Each entry is a live reference into a
             public ArcGIS service — hazard extents, exposure models and climate time series
             maintained by council and national science agencies. Colour carries the meaning:
-            a card's leading edge names the tier that publishes it, and each theme owns a
-            channel hue used consistently across the map, filters and charts.
+            a card's leading edge names the tier that publishes it, and each hazard theme owns
+            a channel hue — on the dot beside every card's theme, in the read-out below, and in
+            the map, filters and charts as they land.
           </p>
         </div>
 
         <div class="hero__keys">
-          <!-- The hazard-channel hues (theme.css --hazard-*) are deliberately
-               not previewed here: this seed's card list only carries a
-               `data-scope` edge stripe (decoded by the key below), not a
-               per-theme channel colour, so a channel legend on this page
-               would decode a system with no visible instance to point at.
-               The tokens are landed and documented in design-tokens.md for
-               the map/filters/charts tickets, which do apply --hazard-* to
-               real UI (map layers, filter chips) — surface the legend there,
-               next to the colour it actually explains. -->
+          <!-- Not a legend: a read-out. Every figure and every bar length below
+               is written by the boot module at the foot of this file from the
+               bundled catalogue (themes() / scopes()), so this block states the
+               real shape of the data — which channel dominates, how thin the
+               climate series are — while also teaching the colour system the
+               map, filters and charts tickets consume. The channel rows are in
+               the catalogue's own first-seen theme order; bar length is the
+               channel's share of the largest channel. -->
+          <div class="hero__key-group">
+            <p class="eyebrow" id="channel-key-label">Datasets per hazard channel</p>
+            <ul class="channel-index" aria-labelledby="channel-key-label">
+              <li class="channel" style="--channel-color: var(--hazard-coastal_inundation)">
+                <span class="channel__name">Coastal Inundation</span>
+                <span class="channel__count figure" data-channel-count="coastal_inundation"></span>
+                <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
+              </li>
+              <li class="channel" style="--channel-color: var(--hazard-flood)">
+                <span class="channel__name">Flood Data</span>
+                <span class="channel__count figure" data-channel-count="flood"></span>
+                <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
+              </li>
+              <li class="channel" style="--channel-color: var(--hazard-landslide)">
+                <span class="channel__name">Landslides</span>
+                <span class="channel__count figure" data-channel-count="landslide"></span>
+                <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
+              </li>
+              <li class="channel" style="--channel-color: var(--hazard-earthquake)">
+                <span class="channel__name">Earthquake Hazard</span>
+                <span class="channel__count figure" data-channel-count="earthquake"></span>
+                <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
+              </li>
+              <li class="channel" style="--channel-color: var(--hazard-sea_level_rise)">
+                <span class="channel__name">Sea Level Rise</span>
+                <span class="channel__count figure" data-channel-count="sea_level_rise"></span>
+                <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
+              </li>
+              <li class="channel" style="--channel-color: var(--hazard-climate)">
+                <span class="channel__name">Climate Data</span>
+                <span class="channel__count figure" data-channel-count="climate"></span>
+                <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
+              </li>
+              <li class="channel" style="--channel-color: var(--hazard-other)">
+                <span class="channel__name">Other Useful Data</span>
+                <span class="channel__count figure" data-channel-count="other"></span>
+                <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
+              </li>
+            </ul>
+            <p class="channel-note">
+              <span class="figure" id="untyped-total"></span> national layers carry no hazard
+              theme of their own: they group under <em>Uncategorised</em> in the catalogue
+              below and ride the neutral Other channel.
+            </p>
+          </div>
+
           <div class="hero__key-group">
             <p class="eyebrow" id="scope-key-label">Publishing tier — the stripe on each card</p>
             <ul class="scope-key" aria-labelledby="scope-key-label">
               <li class="scope-key__item" style="--scope-color: var(--scope-wcc)">
                 <span class="scope-key__swatch" aria-hidden="true"></span>
+                <span class="scope-key__count figure" data-scope-count="wcc"></span>
                 City — Wellington City Council
               </li>
               <li class="scope-key__item" style="--scope-color: var(--scope-regional)">
                 <span class="scope-key__swatch" aria-hidden="true"></span>
+                <span class="scope-key__count figure" data-scope-count="regional"></span>
                 Regional — Greater Wellington
               </li>
               <li class="scope-key__item" style="--scope-color: var(--scope-national)">
                 <span class="scope-key__swatch" aria-hidden="true"></span>
+                <span class="scope-key__count figure" data-scope-count="national"></span>
                 National — GNS &amp; agencies
               </li>
             </ul>
           </div>
         </div>
-      </section>
+        </div>
+      </details>
 
       <!-- filters-root: owned by the filter-panel ticket (theme/scope facet controls). -->
       <div id="filters-root" role="region" aria-label="Filters"></div>
@@ -260,26 +326,43 @@
            The skeleton below occupies the exact silhouette of the first row of
            cards and is replaced wholesale the moment main.ts renders. -->
       <div id="app">
-        <div class="grid" aria-hidden="true">
-          <div class="skeleton-card">
-            <span class="skeleton skeleton--title" style="inline-size: 78%"></span>
-            <span class="skeleton skeleton--text" style="inline-size: 54%"></span>
-            <span class="skeleton skeleton--text" style="inline-size: 34%"></span>
+        <div class="skeleton-section" aria-hidden="true">
+          <div class="skeleton-section__head">
+            <span class="skeleton skeleton--heading" style="inline-size: 11rem"></span>
+            <span class="skeleton skeleton--pill"></span>
           </div>
-          <div class="skeleton-card">
-            <span class="skeleton skeleton--title" style="inline-size: 64%"></span>
-            <span class="skeleton skeleton--text" style="inline-size: 60%"></span>
-            <span class="skeleton skeleton--text" style="inline-size: 34%"></span>
-          </div>
-          <div class="skeleton-card">
-            <span class="skeleton skeleton--title" style="inline-size: 86%"></span>
-            <span class="skeleton skeleton--text" style="inline-size: 48%"></span>
-            <span class="skeleton skeleton--text" style="inline-size: 34%"></span>
-          </div>
-          <div class="skeleton-card">
-            <span class="skeleton skeleton--title" style="inline-size: 70%"></span>
-            <span class="skeleton skeleton--text" style="inline-size: 56%"></span>
-            <span class="skeleton skeleton--text" style="inline-size: 34%"></span>
+          <div class="grid">
+            <div class="skeleton-card" data-scope="wcc">
+              <span class="skeleton skeleton--title" style="inline-size: 78%"></span>
+              <span class="skeleton-card__meta">
+                <span class="skeleton skeleton--dot"></span>
+                <span class="skeleton skeleton--text" style="inline-size: 40%"></span>
+              </span>
+              <span class="skeleton skeleton--text skeleton--link" style="inline-size: 26%"></span>
+            </div>
+            <div class="skeleton-card" data-scope="regional">
+              <span class="skeleton skeleton--title" style="inline-size: 64%"></span>
+              <span class="skeleton-card__meta">
+                <span class="skeleton skeleton--dot"></span>
+                <span class="skeleton skeleton--text" style="inline-size: 52%"></span>
+              </span>
+              <span class="skeleton skeleton--text skeleton--link" style="inline-size: 30%"></span>
+            </div>
+            <div class="skeleton-card" data-scope="national">
+              <span class="skeleton skeleton--title" style="inline-size: 86%"></span>
+              <span class="skeleton-card__meta">
+                <span class="skeleton skeleton--dot"></span>
+                <span class="skeleton skeleton--text" style="inline-size: 36%"></span>
+              </span>
+            </div>
+            <div class="skeleton-card" data-scope="wcc">
+              <span class="skeleton skeleton--title" style="inline-size: 70%"></span>
+              <span class="skeleton-card__meta">
+                <span class="skeleton skeleton--dot"></span>
+                <span class="skeleton skeleton--text" style="inline-size: 46%"></span>
+              </span>
+              <span class="skeleton skeleton--text skeleton--link" style="inline-size: 28%"></span>
+            </div>
           </div>
         </div>
         <noscript>
@@ -327,18 +410,48 @@
 
     <script type="module" src="/src/main.ts"></script>
 
-    <!-- Tiny boot module for the ledger's Channels/Tiers figures only — kept
-         separate from main.ts (which owns the catalogue card list and search)
-         so that file never needs reopening for shell chrome. Reads the same
-         catalogue.ts selectors main.ts itself uses, so these two counts can
-         never drift out of sync with the bundled data the way a hardcoded
-         literal would. -->
+    <!-- Tiny boot module for the shell's own figures — the masthead ledger and
+         the hero read-out. Kept out of main.ts (which owns the catalogue card
+         list and search) so that file never needs reopening for chrome, and
+         built on the same catalogue.ts selectors the feature tickets consume,
+         so the header and the hero can never drift from the bundled data the
+         way hard-coded literals would. Every figure starts empty and shows the
+         shared figure skeleton until this runs; the bars start at scaleX(0) and
+         grow to their real share, so the read-out animates in from its own
+         data rather than from a decorative timer. -->
     <script type="module">
-      import { themes, scopes } from "/src/catalogue.ts";
-      const channelsEl = document.querySelector("#channels-total");
-      const tiersEl = document.querySelector("#tiers-total");
-      if (channelsEl) channelsEl.textContent = String(themes().length);
-      if (tiersEl) tiersEl.textContent = String(scopes().length);
+      import { catalogue, themes, scopes } from "/src/catalogue.ts";
+
+      function setFigure(target, value) {
+        const el = typeof target === "string" ? document.querySelector(target) : target;
+        if (el) el.textContent = String(value);
+      }
+
+      const channels = themes();
+      const tiers = scopes();
+
+      setFigure("#channels-total", channels.length);
+      setFigure("#tiers-total", tiers.length);
+
+      // The largest channel defines full-bar; every other bar is drawn as its
+      // share of that, which is what makes the row lengths comparable.
+      const busiest = Math.max(...channels.map((c) => c.count));
+      let themed = 0;
+
+      for (const { theme, count } of channels) {
+        themed += count;
+        setFigure(`[data-channel-count="${theme}"]`, count);
+        const row = document.querySelector(`[data-channel-count="${theme}"]`)?.closest(".channel");
+        row?.style.setProperty("--share", String(count / busiest));
+      }
+
+      // Datasets with no hazard theme at all (the national-scope layers) are
+      // stated explicitly rather than silently missing from the read-out.
+      setFigure("#untyped-total", catalogue.counts.total - themed);
+
+      for (const { scope, count } of tiers) {
+        setFigure(`[data-scope-count="${scope}"]`, count);
+      }
     </script>
   </body>
 </html>

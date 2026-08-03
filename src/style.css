@@ -32,7 +32,7 @@ html {
    * which disables `position: sticky` for every descendant in the document —
    * a trap for every downstream ticket that adds a sticky filter bar or panel
    * header. At 360px the shell already has no horizontal overflow to hide:
-   * `min-width: 0` on .search/.ds/.brand__text/.channel__text and
+   * `min-width: 0` on .search/.ds/.brand__text/.channel__name and
    * `overflow-wrap: anywhere` on .ds h3 (below) prevent it at the source
    * instead of clipping it after the fact. */
 }
@@ -112,14 +112,35 @@ button {
 }
 
 /* Every figure in the app is tabular so counts do not jitter between the
- * re-renders main.ts performs on each keystroke. */
+ * re-renders main.ts performs on each keystroke. `.figure` additionally marks
+ * a number that is written in by script, and so carries the skeleton state
+ * below. */
 .num,
+.figure,
 .count,
-.stat__value,
-.channel__key {
+.stat__value {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
+}
+
+/* ---- The figure skeleton --------------------------------------------
+ * main.ts writes the catalogue total into #total; the boot module in
+ * index.html writes the ledger's channel/tier counts and every figure in the
+ * hero read-out. Until the module that owns a figure has evaluated, the
+ * element is genuinely empty — and an empty `.figure` renders a
+ * figure-shaped placeholder, never a dash, a zero or a blank. Sibling
+ * tickets: mark any script-written number `.figure` and this comes free. */
+.figure:empty::before {
+  content: "";
+  display: inline-block;
+  inline-size: 2ch;
+  block-size: 0.72em;
+  vertical-align: baseline;
+  background: var(--skeleton-base);
+  border-radius: var(--radius-sm);
+  animation: skeleton-pulse var(--duration-shimmer) var(--ease-standard)
+    infinite;
 }
 
 /* ---- One focus ring, defined once, inherited by every focusable element
@@ -431,7 +452,52 @@ html[data-theme="dark"] .theme-toggle__icon--moon {
   padding-inline-start: calc(var(--space-4) + var(--edge-width));
   background: var(--surface-2);
   border: var(--border-width) solid var(--border);
+  border-inline-start: var(--edge-width) solid var(--scope-color, var(--border-strong));
   border-radius: var(--radius-md);
+}
+
+/* Mirrors #app section h2: the skeleton's section heading gets the same
+ * hairline and baseline rhythm as the real grouped heading it stands in for,
+ * so the loading state promises the same silhouette main.ts actually renders
+ * — a section title plus a count pill, not a wall of identical cards. */
+.skeleton-section__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-4);
+  border-bottom: var(--border-width) solid var(--border);
+}
+
+.skeleton--heading {
+  height: var(--text-lg);
+}
+
+.skeleton--pill {
+  inline-size: 2.5rem;
+  height: 1.2em;
+  border-radius: var(--radius-full);
+}
+
+/* Mirrors .ds__channel: a dot-plus-text row sitting where the real
+ * channel marker and scope/authority/year line will land. */
+.skeleton-card__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-block: var(--space-2) var(--space-3);
+}
+
+.skeleton--dot {
+  flex: none;
+  width: var(--dot-size);
+  height: var(--dot-size);
+  border-radius: var(--radius-full);
+}
+
+/* Mirrors .ds a: the source link sits at the card's own bottom edge. */
+.skeleton--link {
+  margin-top: auto;
 }
 
 /* ====================================================================== *
@@ -639,24 +705,8 @@ main > *,
   color: var(--accent);
 }
 
-/* main.ts writes the real total into #total, and the boot module in
- * index.html writes the catalogue-derived counts into #channels-total and
- * #tiers-total, once their respective data has evaluated. Until then each
- * element is genuinely empty, and this renders a figure-shaped placeholder
- * rather than a dash or a blank. */
-#total:empty::before,
-#channels-total:empty::before,
-#tiers-total:empty::before {
-  content: "";
-  display: inline-block;
-  inline-size: 2ch;
-  block-size: 0.72em;
-  vertical-align: baseline;
-  background: var(--skeleton-base);
-  border-radius: var(--radius-sm);
-  animation: skeleton-pulse var(--duration-shimmer) var(--ease-standard)
-    infinite;
-}
+/* The ledger's three figures are all script-written, so each carries
+ * `.figure` and inherits the shared skeleton state defined once above. */
 
 /* The board's live rule: a hairline under the masthead with one signal sweep
  * travelling along it — the only looping animation in the app. Absolutely
@@ -697,14 +747,85 @@ main > * + * {
   margin-top: var(--space-6);
 }
 
-/* ---- Hero: the first-run briefing ------------------------------------
- * This surface is for reading and orienting, so unlike the ledger it
- * breathes: generous padding, a long measure, a large display statement. */
+/* ---- Hero: the briefing & legend disclosure ---------------------------
+ * A `<details>`, closed on first paint. The masthead already carries the
+ * title, one-line orientation, search and the live ledger, so the searchable
+ * catalogue (#app) is the first thing in view below the masthead at any
+ * width — this used to be a landing-page-sized panel sitting in front of it.
+ * The summary row is always visible and still gets the entrance rise, so
+ * first paint reads as considered rather than as an empty gap. */
 .hero {
+  padding: 0;
+  overflow: hidden;
+  animation: rise var(--duration-slow) var(--ease-out) both;
+}
+
+.hero__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: var(--tap-min);
+  padding: var(--space-4) var(--space-5);
+  cursor: pointer;
+  list-style: none;
+  transition: var(--transition-colors);
+}
+
+/* The UA disclosure triangle is replaced by the chevron in the markup.
+ * `list-style: none` above covers modern engines; the -webkit rule covers
+ * older Safari, and `content: ""` neutralises the marker box itself (its
+ * `display` is not an animatable/settable property on ::marker). */
+.hero__summary::-webkit-details-marker {
+  display: none;
+}
+
+.hero__summary::marker {
+  content: "";
+}
+
+.hero__summary:hover {
+  background: var(--surface-2);
+}
+
+/* .hero clips to its radius (`overflow: hidden`), which would crop the shared
+ * ring on this full-bleed row. Same ring, same tokens — drawn inside the row's
+ * own edge instead of outside it. This is the only sanctioned reason to touch
+ * focus in a component. */
+.hero__summary:focus-visible {
+  outline-offset: calc(-1 * (var(--focus-ring-offset) + var(--focus-ring-width)));
+}
+
+.hero__summary-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.hero__summary-hint {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+/* The chevron is the only cue (besides the content itself) that this is a
+ * disclosure — it flips with the same spring the theme toggle uses, so
+ * opening/closing the briefing reads as direct feedback, not a page jump. */
+.hero__chevron {
+  flex: none;
+  color: var(--text-tertiary);
+  transition: transform var(--duration-base) var(--ease-spring);
+}
+
+.hero[open] .hero__chevron {
+  transform: rotate(180deg);
+}
+
+.hero__content {
   display: grid;
   gap: var(--space-6);
-  padding: var(--space-5);
-  animation: rise var(--duration-slow) var(--ease-out) both;
+  padding: 0 var(--space-5) var(--space-5);
+  animation: hero-reveal var(--duration-slow) var(--ease-out) both;
 }
 
 .hero__lead {
@@ -743,9 +864,11 @@ main > * + * {
 }
 
 /* ---- Hazard channel index -------------------------------------------
- * The key to the colour system: one hue per catalogue theme, shown with the
- * raw `theme` value so a reader (and the next ticket) can map a stripe back
- * to the data. Dense by design — it is a legend, not prose. */
+ * Not a legend — a read-out. One row per catalogue theme, carrying that
+ * theme's hue, its live dataset count, and a bar whose length is the
+ * channel's share of the busiest channel (the boot module in index.html sets
+ * `--share` from catalogue.ts). Dense by design: this block exists to be
+ * compared across, so it is ruled and tight rather than airy. */
 .channel-index {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(var(--channel-min), 1fr));
@@ -753,9 +876,13 @@ main > * + * {
 }
 
 .channel {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "name  count"
+    "track track";
+  align-items: baseline;
+  gap: var(--space-2);
   min-width: 0;
   padding: var(--space-2) var(--space-3);
   background: var(--surface-2);
@@ -764,31 +891,62 @@ main > * + * {
   border-radius: var(--radius-sm);
 }
 
-.channel__text {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  min-width: 0;
-}
-
 .channel__name {
+  grid-area: name;
+  min-width: 0;
   font-family: var(--font-display);
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-tight);
   color: var(--text-primary);
+  overflow-wrap: anywhere;
 }
 
-/* The raw catalogue `theme` key, set in its own channel hue — every hue is
- * verified >= 4.5:1 against this surface in both modes, so this is real text,
- * not decoration. */
-.channel__key {
-  font-size: var(--text-2xs);
+/* The count is set in its own channel hue — every hue is verified >= 4.5:1
+ * against this surface in both modes, so this is real text, not decoration. */
+.channel__count {
+  grid-area: count;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   line-height: var(--leading-tight);
-  color: var(--channel-color, var(--text-tertiary));
-  white-space: nowrap;
+  color: var(--channel-color, var(--text-secondary));
+}
+
+.channel__track {
+  grid-area: track;
+  block-size: var(--rule-width);
+  border-radius: var(--radius-full);
+  background: var(--surface-inset);
   overflow: hidden;
-  text-overflow: ellipsis;
+}
+
+/* Grows from nothing to its real share when the boot module writes --share:
+ * a transform, so it stays on the compositor, and it animates from the data
+ * rather than from a decorative timer. Reduced motion collapses the duration
+ * token, leaving the bar at its correct final length. */
+.channel__bar {
+  display: block;
+  block-size: 100%;
+  border-radius: inherit;
+  background: var(--channel-color, var(--accent));
+  transform: scaleX(var(--share, 0));
+  transform-origin: left center;
+  transition: transform var(--duration-slow) var(--ease-out);
+}
+
+.channel-note {
+  max-inline-size: var(--prose-width);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+  color: var(--text-tertiary);
+}
+
+/* Names a real section heading from the catalogue below, so it is set as a
+ * label rather than as emphasis. */
+.channel-note em {
+  font-style: normal;
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
 }
 
 /* ---- Scope key: decodes the stripe down each card's leading edge ------ */
@@ -812,6 +970,14 @@ main > * + * {
   height: var(--text-base);
   border-radius: var(--radius-full);
   background: var(--scope-color, var(--accent));
+}
+
+/* The tier's live dataset count, written by the boot module. Kept in the
+ * text colour rather than the tier hue — the swatch beside it already carries
+ * the colour, and this way the figure reads at full contrast. */
+.scope-key__count {
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
 }
 
 /* Regions owned by later feature tickets render nothing yet; collapse
@@ -938,9 +1104,35 @@ main > * + * {
   overflow-wrap: anywhere;
 }
 
+/* The card's own hazard-channel marker — a coloured dot plus its label, set
+ * via the per-dataset `--channel-color` main.ts writes inline (one of seven
+ * fixed hues, so an attribute-selector table isn't needed the way scope's
+ * three values get one below). This is the fix for the channel system being
+ * "ornamental": every card now carries its channel, not just the tier stripe,
+ * so scanning the catalogue for (e.g.) flood data works without a legend. */
+.ds__channel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--channel-color, var(--text-tertiary));
+  font-weight: var(--weight-medium);
+}
+
+.ds__channel-dot {
+  flex: none;
+  width: var(--dot-size);
+  height: var(--dot-size);
+  border-radius: var(--radius-full);
+  background: var(--channel-color, var(--accent));
+}
+
+/* The card's one action. Uses the shell's external-link glyph from the single
+ * icon sprite — the same mark the footer's source links carry — rather than a
+ * second arrow character. */
 .ds a {
   display: inline-flex;
   align-items: center;
+  gap: var(--space-2);
   margin-top: auto;
   min-height: var(--tap-min);
   font-size: var(--text-xs);
@@ -948,8 +1140,17 @@ main > * + * {
   text-decoration: none;
 }
 
+.ds a .icon {
+  transform: translateY(calc(-1 * var(--border-width)));
+  transition: var(--transition-transform);
+}
+
 .ds a:hover {
   text-decoration: underline;
+}
+
+.ds a:hover .icon {
+  transform: translate(var(--border-width), calc(-2 * var(--border-width)));
 }
 
 .empty {
@@ -1037,6 +1238,19 @@ main > * + * {
   }
 }
 
+/* The briefing's content when the disclosure opens: it slides out from under
+ * the summary row (the panel clips it) rather than appearing all at once. */
+@keyframes hero-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-1 * var(--space-2)));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @keyframes rule-sweep {
   to {
     transform: translateX(720%);
@@ -1076,9 +1290,7 @@ main > * + * {
     display: none;
   }
 
-  #total:empty::before,
-  #channels-total:empty::before,
-  #tiers-total:empty::before {
+  .figure:empty::before {
     animation: none;
   }
 }
@@ -1119,8 +1331,12 @@ main > * + * {
     padding-inline: max(var(--space-6), env(safe-area-inset-left));
   }
 
-  .hero {
-    padding: var(--space-6);
+  .hero__summary {
+    padding: var(--space-5) var(--space-6);
+  }
+
+  .hero__content {
+    padding: 0 var(--space-6) var(--space-6);
   }
 
   .grid {
@@ -1130,7 +1346,7 @@ main > * + * {
 
 /* Wide enough to run the briefing copy and the colour keys side by side. */
 @media (min-width: 64rem) {
-  .hero {
+  .hero__content {
     grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
     align-items: start;
     gap: var(--space-7);

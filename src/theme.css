@@ -116,7 +116,7 @@
   --lede-width: 54ch;
   --search-width: 34rem;
   --card-min: 15rem; /* auto-fill grid track floor for the card grid */
-  --channel-min: 9.5rem; /* auto-fill track floor for the channel index */
+  --channel-min: 10.5rem; /* auto-fill track floor for the channel read-out */
   --tap-min: 2.75rem; /* 44px — minimum interactive target, WCAG 2.5.5 */
   --icon-size: 1.25rem;
   --icon-size-sm: 1rem;
