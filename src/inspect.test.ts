@@ -563,6 +563,24 @@ describe("inspectorHtml", () => {
     expect(html).toContain('<span class="hazhit__v">0.4 m</span>');
   });
 
+  it("does not attribute a stacked layer's attributes to whichever covering feature happened to be first", () => {
+    // Two overlapping extents on the same layer, with different properties.
+    // `inspectPoint` reports the first one in service order as `hit.feature`
+    // (see inspect.test.ts's "counts every covering feature but reports the
+    // containing one") — but that is not necessarily the feature the user
+    // meant, so the popup must not print its attributes next to a "2× covers"
+    // badge as though they were the answer for the clicked point.
+    const stacked = layer({
+      id: "stacked",
+      label: "Coastal inundation 1.0 m SLR",
+      collection: collection(feature(SQUARE, { DEPTH: "0.4 m" }), feature(TWO_PARTS, { DEPTH: "1.2 m" })),
+    });
+    const html = render([174.8, -41.3], [stacked]);
+    expect(html).toContain(">2× covers<");
+    expect(html).not.toContain("hazhit__attrs");
+    expect(html).not.toContain("DEPTH");
+  });
+
   it("escapes service-supplied attributes rather than injecting them as markup", () => {
     const hostile = layer({
       id: "hostile",

@@ -375,7 +375,16 @@ function formatDistance(degrees: number): string {
 /** Up to `limit` attributes of the matched feature that actually carry a
  * value — the same six-attribute readout the old per-feature popup gave, now
  * attached to the layer row it belongs to. Values come from the service, so
- * both key and value are escaped. */
+ * both key and value are escaped.
+ *
+ * `null` whenever the reported feature is not the *only* one that matched:
+ * when a layer's badge already reads "N× covers", `hit.feature` is merely the
+ * first of those N features in service order (see inspect.ts), not the one
+ * actually under the cursor. Printing its attributes next to a "2× covers"
+ * badge would present one arbitrary feature's data as if it were the answer
+ * for the clicked point — exactly the kind of unlabelled, service-order-
+ * dependent attribution the old per-feature popup never had to worry about,
+ * because it only ever showed the one feature the user actually clicked. */
 function attrChips(feature: Feature<Geometry, GeoJsonProperties> | null, limit = 6): string {
   const entries = Object.entries(feature?.properties ?? {})
     .filter(([, v]) => v !== null && v !== "" && v !== undefined)
@@ -414,7 +423,7 @@ function hitHtml(hit: LayerHit): string {
           <span class="hazhit__theme">${escapeHtml(hit.theme)}</span>
           <span class="hazhit__mode" data-mode="${hit.mode}">${escapeHtml(badge)}</span>
         </span>
-        ${attrChips(hit.feature)}
+        ${hit.matches === 1 ? attrChips(hit.feature) : ""}
         <span class="sr-only">Zoom to this feature</span>
       </span>
     </button>
@@ -794,7 +803,32 @@ function refreshInspector(): void {
     // `focusout` reliably fires for it. Drop the highlight explicitly, or a
     // layer stays lit up on the map with nothing pointing at it.
     highlightLayer(null);
+    // Leaflet's `Popup.setContent` replaces the content node's children
+    // wholesale (DivOverlay._updateContent assigns through `innerHTML`), so a
+    // focused `.hazhit` button is destroyed out from under the user — an
+    // unrelated layer landing mid-keyboard-navigation would otherwise dump
+    // focus back to the document. Capture which row (if any) held focus, and
+    // hand it back to the equivalent control in the new content, or to the
+    // popup's own close button if that row no longer exists.
+    const element = inspectorPopup.getElement();
+    const active = document.activeElement;
+    const focusedId =
+      element && active instanceof HTMLElement && element.contains(active)
+        ? (active.closest<HTMLElement>(".hazhit")?.dataset.id ?? null)
+        : undefined;
     inspectorPopup.setContent(html);
+    if (focusedId !== undefined) {
+      const nextElement = inspectorPopup.getElement();
+      const rows = nextElement?.querySelectorAll<HTMLElement>(".hazhit") ?? [];
+      let target: HTMLElement | null = null;
+      for (const row of rows) {
+        if (row.dataset.id === focusedId) {
+          target = row;
+          break;
+        }
+      }
+      (target ?? nextElement?.querySelector<HTMLElement>(".leaflet-popup-close-button"))?.focus();
+    }
     announce(inspectionSummary(result, unchecked));
   }
 }
@@ -884,6 +918,13 @@ function inspectAt(L: LeafletModule, map: LeafletMap, at: LatLng): void {
 
 function wireInspector(L: LeafletModule, map: LeafletMap): void {
   map.on("click", (event) => inspectAt(L, map, (event as LeafletMouseEvent).latlng));
+  // Tolerance is a function of zoom (toleranceForZoom), so an open popup's
+  // "near" verdicts go stale the moment the user zooms without clicking again:
+  // a fault line read as "≈ 84 m" at z13 may no longer be within tolerance at
+  // z17. refreshInspector() already re-derives tolerance from the current zoom
+  // and only touches the popup when the answer actually changed, so wiring it
+  // to zoomend keeps an open answer honest about the zoom it is shown at.
+  map.on("zoomend", refreshInspector);
   // Keyboard parity: Leaflet's own keyboard handler pans and zooms the focused
   // map but never synthesises a click, so without this the whole inspector
   // would be pointer-only. Enter inspects the centre of the current view —
