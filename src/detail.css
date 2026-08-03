@@ -1,0 +1,816 @@
+/* Dataset dossier — the detail surface for src/detail.ts.
+ *
+ * Concept (carried on from the discovery console in filters.css and the
+ * hazard rack in map.css): this is the record card pulled out of the
+ * dispatcher's cabinet and clipped onto the desk. The left of the card is the
+ * *reading* half — title, abstract, source — and gets room to breathe; the
+ * right rail is the *record* itself, a hairline-ruled fact ladder that keeps
+ * the same nine rows for every dataset so two datasets can be scanned against
+ * each other; underneath sits the one thing a paper record could never do —
+ * a live probe of the council's own ArcGIS endpoint, reading back the feature
+ * count and the layer's field schema as an instrument readout.
+ *
+ * Dark-first: the ladder below is authored for dark and ported to light at
+ * the bottom of the token block. Colour comes from the product's owned accent
+ * (--accent, style.css) via --dtl-signal — nothing here hardcodes a hue. */
+
+:root {
+  /* Surface ladder: page (--bg) → panel → raised → raised-2, 4–6px steps. */
+  --dtl-panel: #101a2c;
+  --dtl-raised: #16233a;
+  --dtl-raised-2: #1d2c47;
+  --dtl-line: #23324c;
+  --dtl-line-2: #2f4364;
+
+  /* Ink stepped down in luminance, never in opacity. */
+  --dtl-ink: #e7edf8;
+  --dtl-ink-2: #a4b5d0;
+  --dtl-ink-3: #6f819f;
+
+  --dtl-signal: var(--accent);
+  --dtl-on-signal: #061523;
+  --dtl-danger: #ff6b81;
+  --dtl-shadow: 0 18px 40px rgba(2, 8, 20, 0.5);
+  --dtl-veil: rgba(231, 237, 248, 0.07);
+
+  /* Same paired type as the console and the rack: sans chrome, mono numbers,
+   * ids, field names and endpoints. */
+  --dtl-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --dtl-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+
+  /* Type scale — 7 sizes, 3 weights (400/600/700), held to across the panel. */
+  --dtl-fs-label: 10.5px;
+  --dtl-fs-micro: 11px;
+  --dtl-fs-chip: 12.5px;
+  --dtl-fs-body: 13.5px;
+  --dtl-fs-lead: 15px;
+  --dtl-fs-title: 21px;
+  --dtl-fs-readout: 28px;
+
+  --dtl-fast: 120ms;
+  --dtl-mid: 200ms;
+  --dtl-ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --dtl-panel: #ffffff;
+    --dtl-raised: #f1f5fa;
+    --dtl-raised-2: #e6edf6;
+    --dtl-line: #dde5ef;
+    --dtl-line-2: #c2cfe0;
+    --dtl-ink: #0f172a;
+    --dtl-ink-2: #48586f;
+    --dtl-ink-3: #74839a;
+    --dtl-on-signal: #f7fbff;
+    --dtl-danger: #c2334b;
+    --dtl-shadow: 0 18px 40px rgba(15, 23, 42, 0.14);
+    --dtl-veil: rgba(15, 23, 42, 0.05);
+  }
+}
+
+/* Repeated rather than imported: this module owns its own utility so the
+ * dossier never depends on another feature's stylesheet being loaded. */
+.dossier .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.dossier .ico {
+  flex: none;
+  display: block;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Shell                                                                   */
+/* ---------------------------------------------------------------------- */
+
+.dossier {
+  position: relative;
+  overflow: hidden;
+  margin: 16px 0 20px;
+  padding: 14px 16px 16px 18px;
+  background: var(--dtl-panel);
+  border: 1px solid var(--dtl-line);
+  border-radius: 14px;
+  font-family: var(--dtl-sans);
+  color: var(--dtl-ink);
+  /* Mount motion lives on the shell, never on a control inside it, so no
+   * interactive element ends up with a persistent animation transform its
+   * own hover/press state would have to fight. */
+  animation: dtl-rise 240ms var(--dtl-ease) backwards;
+}
+
+/* The rail reads as "this record is live": a stub while nothing is selected,
+ * full height and full strength once a dataset is on the desk. */
+.dossier__rail {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--dtl-signal);
+  opacity: 0.3;
+  transform: scaleY(0.18);
+  transform-origin: top center;
+  transition: transform var(--dtl-mid) var(--dtl-ease), opacity var(--dtl-mid) var(--dtl-ease);
+}
+
+.dossier[data-state="record"] .dossier__rail {
+  opacity: 1;
+  transform: scaleY(1);
+}
+
+.dossier--missing .dossier__rail {
+  background: var(--dtl-danger);
+  opacity: 1;
+  transform: scaleY(1);
+}
+
+/* The single highest-leverage "designed" move: tiny uppercase tracked label. */
+.dossier__label,
+.probe__label,
+.fact__key {
+  margin: 0;
+  font-size: var(--dtl-fs-label);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dtl-ink-3);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Idle + missing states — compact, never a blank mount                     */
+/* ---------------------------------------------------------------------- */
+
+.dossier--idle,
+.dossier--missing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  padding: 11px 14px 11px 18px;
+}
+
+.dossier__idle {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 0;
+  max-width: 78ch;
+  font-size: var(--dtl-fs-body);
+  line-height: 1.55;
+  color: var(--dtl-ink-3);
+}
+
+.dossier--missing .dossier__idle {
+  color: var(--dtl-ink-2);
+}
+
+.dossier--missing .dossier__idle .ico {
+  color: var(--dtl-danger);
+  transform: translateY(2px);
+}
+
+.dossier__idle code {
+  font-family: var(--dtl-mono);
+  font-size: var(--dtl-fs-chip);
+  color: var(--dtl-ink);
+}
+
+.dossier--missing .dossier__close {
+  margin-left: auto;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Head                                                                    */
+/* ---------------------------------------------------------------------- */
+
+.dossier__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--dtl-line);
+}
+
+.dossier__ident {
+  min-width: 0;
+  margin-right: auto;
+}
+
+.dossier__title {
+  margin: 5px 0 0;
+  font-size: var(--dtl-fs-title);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  color: var(--dtl-ink);
+}
+
+.dossier__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 9px 0 0;
+}
+
+.tag {
+  padding: 3px 8px;
+  font-size: var(--dtl-fs-label);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dtl-ink-2);
+  background: var(--dtl-raised);
+  border: 1px solid var(--dtl-line);
+  border-radius: 999px;
+}
+
+.tag--theme {
+  color: var(--dtl-signal);
+  border-color: color-mix(in srgb, var(--dtl-signal) 42%, var(--dtl-line));
+  background: color-mix(in srgb, var(--dtl-signal) 12%, var(--dtl-raised));
+}
+
+.tag--num {
+  font-family: var(--dtl-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.dossier__close {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 6px 10px;
+  font-family: var(--dtl-sans);
+  font-size: var(--dtl-fs-chip);
+  font-weight: 600;
+  color: var(--dtl-ink-2);
+  background: var(--dtl-raised);
+  border: 1px solid var(--dtl-line);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform var(--dtl-fast) var(--dtl-ease), color var(--dtl-fast) linear,
+    border-color var(--dtl-fast) linear;
+}
+
+.dossier__close:hover {
+  color: var(--dtl-ink);
+  border-color: var(--dtl-line-2);
+  transform: translateY(-1px);
+}
+
+.dossier__close:active {
+  transform: scale(0.96);
+}
+
+.dossier__close:focus-visible,
+.dossier__source:focus-visible,
+.probe__endpoint:focus-visible,
+.probe__retry:focus-visible {
+  outline: 2px solid var(--dtl-signal);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Body: reading half (left), fact ladder (right rail), probe (below)       */
+/* ---------------------------------------------------------------------- */
+
+.dossier__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 296px;
+  gap: 16px 22px;
+  padding-top: 13px;
+}
+
+.dossier__read {
+  grid-column: 1;
+}
+
+/* The one surface here that is meant to be *read*, so it breathes: longer
+ * measure, taller line, bigger ink than anything in the ladder beside it. */
+.dossier__abstract {
+  margin: 0;
+  max-width: 68ch;
+  font-size: var(--dtl-fs-lead);
+  font-weight: 400;
+  line-height: 1.62;
+  color: var(--dtl-ink-2);
+}
+
+.dossier__abstract--none {
+  font-size: var(--dtl-fs-body);
+  font-style: italic;
+  color: var(--dtl-ink-3);
+}
+
+.dossier__source {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 12px;
+  padding: 7px 11px;
+  font-size: var(--dtl-fs-chip);
+  font-weight: 600;
+  color: var(--dtl-signal);
+  text-decoration: none;
+  background: color-mix(in srgb, var(--dtl-signal) 10%, var(--dtl-raised));
+  border: 1px solid color-mix(in srgb, var(--dtl-signal) 34%, var(--dtl-line));
+  border-radius: 8px;
+  transition: transform var(--dtl-fast) var(--dtl-ease), background-color var(--dtl-fast) linear,
+    border-color var(--dtl-fast) linear;
+}
+
+.dossier__source:hover {
+  background: color-mix(in srgb, var(--dtl-signal) 18%, var(--dtl-raised));
+  border-color: var(--dtl-signal);
+  transform: translateY(-1px);
+}
+
+.dossier__source:active {
+  transform: scale(0.98);
+}
+
+.dossier__source-host {
+  font-family: var(--dtl-mono);
+  font-size: var(--dtl-fs-micro);
+  font-weight: 400;
+  color: var(--dtl-ink-3);
+}
+
+.dossier__nosource {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 12px 0 0;
+  font-size: var(--dtl-fs-micro);
+  color: var(--dtl-ink-3);
+}
+
+/* --- fact ladder: the dense half. Nine rows, always, hairline-ruled ----- */
+
+.dossier__facts {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--dtl-raised);
+  border: 1px solid var(--dtl-line);
+  border-radius: 11px;
+  align-self: start;
+}
+
+.fact {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--dtl-line);
+}
+
+.fact:last-child {
+  border-bottom: 0;
+}
+
+.fact__key {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fact__val {
+  margin: 0;
+  font-size: var(--dtl-fs-chip);
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--dtl-ink);
+  overflow-wrap: anywhere;
+}
+
+.fact__val--mono {
+  font-family: var(--dtl-mono);
+  font-size: var(--dtl-fs-micro);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  color: var(--dtl-ink-2);
+}
+
+/* Upstream simply has no value here — say so quietly rather than dropping
+ * the row and changing the record's shape between datasets. */
+.fact[data-missing="true"] .fact__val {
+  font-weight: 400;
+  color: var(--dtl-ink-3);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Live service probe — the instrument half                                */
+/* ---------------------------------------------------------------------- */
+
+.probe {
+  grid-column: 1;
+  padding: 12px 14px 13px;
+  background: var(--dtl-raised);
+  border: 1px solid var(--dtl-line);
+  border-radius: 11px;
+}
+
+.probe__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--dtl-line);
+}
+
+.probe__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The one ambient loop in this panel, and only while a request is actually
+ * in flight: a pulsing dot on the probe's own header. */
+.probe__pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: auto;
+  background: var(--dtl-ink-3);
+  transform: scale(1);
+  transition: background-color var(--dtl-fast) linear;
+}
+
+.probe[data-status="loading"] .probe__pulse {
+  background: var(--dtl-signal);
+  animation: dtl-pulse 1.2s var(--dtl-ease) infinite;
+}
+
+.probe[data-status="ready"] .probe__pulse {
+  background: var(--dtl-signal);
+}
+
+.probe[data-status="error"] .probe__pulse {
+  background: var(--dtl-danger);
+}
+
+.probe__retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  font-family: var(--dtl-sans);
+  font-size: var(--dtl-fs-micro);
+  font-weight: 600;
+  color: var(--dtl-ink-2);
+  background: var(--dtl-raised-2);
+  border: 1px solid var(--dtl-line);
+  border-radius: 7px;
+  cursor: pointer;
+  transition: transform var(--dtl-fast) var(--dtl-ease), color var(--dtl-fast) linear,
+    border-color var(--dtl-fast) linear;
+}
+
+.probe__retry:hover {
+  color: var(--dtl-ink);
+  border-color: var(--dtl-line-2);
+  transform: translateY(-1px);
+}
+
+.probe__retry:active {
+  transform: scale(0.95);
+}
+
+.probe__retry[hidden] {
+  display: none;
+}
+
+.probe[data-status="error"] .probe__retry {
+  color: var(--dtl-danger);
+  border-color: color-mix(in srgb, var(--dtl-danger) 45%, var(--dtl-line));
+}
+
+.probe__stage {
+  padding-top: 11px;
+}
+
+/* --- the readout ------------------------------------------------------- */
+
+.probe__readout {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 0;
+}
+
+.probe__count {
+  font-family: var(--dtl-mono);
+  font-size: var(--dtl-fs-readout);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--dtl-ink);
+  animation: dtl-tick 220ms var(--dtl-ease) backwards;
+}
+
+.probe__fieldcount {
+  font-family: var(--dtl-mono);
+  font-size: var(--dtl-fs-lead);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--dtl-ink-2);
+}
+
+.probe__unit {
+  font-size: var(--dtl-fs-label);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dtl-ink-3);
+}
+
+.probe__sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 5px;
+  background: var(--dtl-line-2);
+}
+
+.probe__layer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin: 8px 0 0;
+  font-size: var(--dtl-fs-body);
+  font-weight: 600;
+  color: var(--dtl-ink-2);
+}
+
+.probe__geom {
+  padding: 2px 7px;
+  font-size: var(--dtl-fs-label);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dtl-ink-3);
+  border: 1px solid var(--dtl-line-2);
+  border-radius: 999px;
+}
+
+/* --- field schema: the densest thing on the page ----------------------- */
+
+.probe__fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 11px 0 0;
+  padding: 0;
+  max-height: 168px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+}
+
+.field {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 8px;
+  background: var(--dtl-raised-2);
+  border: 1px solid var(--dtl-line);
+  border-radius: 6px;
+  animation: dtl-rise 200ms var(--dtl-ease) backwards;
+  animation-delay: calc(var(--i, 0) * 14ms);
+  transition: border-color var(--dtl-fast) linear;
+}
+
+.field:hover {
+  border-color: var(--dtl-line-2);
+}
+
+.field__name {
+  font-family: var(--dtl-mono);
+  font-size: var(--dtl-fs-micro);
+  font-weight: 600;
+  color: var(--dtl-ink);
+}
+
+.field__type {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--dtl-ink-3);
+}
+
+.probe__note {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 10px 0 0;
+  font-size: var(--dtl-fs-micro);
+  line-height: 1.55;
+  color: var(--dtl-ink-3);
+}
+
+/* --- failure + "nothing to probe" ------------------------------------- */
+
+.probe__failtitle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: var(--dtl-fs-body);
+  font-weight: 600;
+  color: var(--dtl-danger);
+}
+
+.probe__fail--none .probe__failtitle {
+  color: var(--dtl-ink-2);
+}
+
+.probe__failbody {
+  margin: 6px 0 0;
+  max-width: 66ch;
+  font-size: var(--dtl-fs-micro);
+  line-height: 1.6;
+  color: var(--dtl-ink-3);
+}
+
+.probe__endpoint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 11px;
+  font-family: var(--dtl-mono);
+  font-size: var(--dtl-fs-micro);
+  color: var(--dtl-ink-3);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  transition: color var(--dtl-fast) linear;
+}
+
+.probe__endpoint:hover {
+  color: var(--dtl-signal);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Skeleton — shapes that match what replaces them                         */
+/* ---------------------------------------------------------------------- */
+
+.dskel {
+  position: relative;
+  overflow: hidden;
+  display: block;
+  background: var(--dtl-raised-2);
+  border-radius: 999px;
+}
+
+.dskel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, var(--dtl-veil), transparent);
+  transform: translateX(-100%);
+  animation: dtl-sweep 1.1s var(--dtl-ease) infinite;
+}
+
+.dskel--readout {
+  width: 176px;
+  height: 28px;
+  border-radius: 6px;
+}
+
+.dskel--pill {
+  height: 21px;
+  border-radius: 6px;
+}
+
+.probe__skeleton .probe__pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 19px;
+}
+
+@keyframes dtl-rise {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dtl-tick {
+  from {
+    opacity: 0.35;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dtl-sweep {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes dtl-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.7);
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Narrow screens: the record drops under the reading half (down to 375px) */
+/* ---------------------------------------------------------------------- */
+
+@media (max-width: 860px) {
+  .dossier {
+    padding: 12px 12px 14px 16px;
+  }
+
+  .dossier__body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .dossier__read,
+  .dossier__facts,
+  .probe {
+    grid-column: 1;
+  }
+
+  .dossier__facts {
+    grid-row: auto;
+  }
+
+  .dossier__title {
+    font-size: 18px;
+  }
+
+  .probe__fields {
+    max-height: 190px;
+  }
+}
+
+@media (max-width: 420px) {
+  .dossier__head {
+    flex-wrap: wrap;
+  }
+
+  .dossier__close span:not(.ico) {
+    display: none;
+  }
+
+  .dossier__close {
+    padding: 6px 8px;
+  }
+
+  .fact {
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .dossier__source {
+    flex-wrap: wrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dossier,
+  .dossier__rail,
+  .dossier__close,
+  .dossier__source,
+  .probe__retry,
+  .probe__endpoint,
+  .probe__pulse,
+  .probe__count,
+  .field,
+  .dskel::after {
+    transition-duration: 1ms;
+    animation: none;
+  }
+}
