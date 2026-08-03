@@ -396,6 +396,23 @@ function safeHref(url: string | null): string | null {
   return url && /^https?:\/\//i.test(url) ? url : null;
 }
 
+/** The source button's label, matched to what it actually opens. "Open
+ * source layer" is only true for `arcgis_rest` datasets — a portal item or a
+ * plain web source isn't a layer, and a button that claims otherwise
+ * contradicts the metadata sitting right above it (and, for a non-queryable
+ * dataset, the probe's own "no live preview" note below it). */
+export function sourceCtaLabel(linkType: Dataset["link_type"]): string {
+  switch (linkType) {
+    case "arcgis_rest":
+      return "Open source layer";
+    case "arcgis_portal":
+      return "Open portal item";
+    case "web":
+    default:
+      return "Open source";
+  }
+}
+
 function value(text: string | null | undefined): string {
   const trimmed = text?.trim();
   return trimmed ? esc(trimmed) : `<span class="dossier__nil">${EM_DASH}</span>`;
@@ -543,7 +560,7 @@ export function detailHtml(
 
   const href = safeHref(d.url);
   const source = href
-    ? `<a class="dossier__source" href="${esc(href)}" target="_blank" rel="noreferrer">${ICON_EXTERNAL}<span>Open source layer</span></a>`
+    ? `<a class="dossier__source" href="${esc(href)}" target="_blank" rel="noreferrer">${ICON_EXTERNAL}<span>${esc(sourceCtaLabel(d.link_type))}</span></a>`
     : `<p class="dossier__note">${ICON_INFO}<span>No public source link in the catalogue for this dataset.</span></p>`;
 
   return `<section class="dossier" data-dossier="${esc(d.id)}">
@@ -582,6 +599,24 @@ export function detailHtml(
 let currentRoot: HTMLElement | null = null;
 let currentId: string | undefined;
 let currentDataset: Dataset | undefined;
+let hasRenderedOnce = false;
+
+function prefersReducedMotion(): boolean {
+  return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/** #detail-root sits above the catalogue in index.html, so a card click deep
+ * in a long, scrolled list renders the dossier *above* the viewport while
+ * main.ts's own highlightSelection scrolls the clicked *card* into view
+ * instead — the panel this ticket exists to show never becomes visible.
+ * Bring the dossier itself into view on every user-driven selection change
+ * (see the `hasRenderedOnce`/id-changed guard at the call site, which skips
+ * this on first mount so a fresh deep link doesn't force an unnecessary
+ * jump). Smooth by default, instant under prefers-reduced-motion — same
+ * rule main.ts's card-scroll follows. */
+function scrollDetailIntoView(root: HTMLElement): void {
+  root.scrollIntoView({ block: "start", behavior: prefersReducedMotion() ? "auto" : "smooth" });
+}
 
 /** Repaint. `id` is the dataset the paint is *for* — compared against the
  * selected dataset (not the requested id, which may name a dataset that isn't
@@ -624,6 +659,9 @@ export default function renderDetail(root: HTMLElement, state: RouteState): void
   wireRoot(root);
   const id = state.dataset;
   if (root === currentRoot && id === currentId) return;
+  const previousId = currentId;
+  const isFirstRender = !hasRenderedOnce;
+  hasRenderedOnce = true;
   currentRoot = root;
   currentId = id;
   currentDataset = id ? findById(id) : undefined;
@@ -631,4 +669,11 @@ export default function renderDetail(root: HTMLElement, state: RouteState): void
   // when the probe resolves; an unknown id has no dataset, so it lands on the
   // idle paint and detailHtml renders the "no such dataset" hint.
   controller.select(currentDataset);
+  // Only for a genuine, user-driven selection change to a real dataset — not
+  // the first render (a fresh deep link is already at the top of the page,
+  // nothing to scroll to) and not a close (id -> undefined leaves the reader
+  // exactly where they were).
+  if (currentDataset && !isFirstRender && id !== previousId) {
+    scrollDetailIntoView(root);
+  }
 }

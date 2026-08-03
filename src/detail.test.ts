@@ -14,6 +14,7 @@ import {
   parseLayerInfo,
   probeHtml,
   resolvedLayerIndex,
+  sourceCtaLabel,
   type FetchLike,
   type FetchResponseLike,
   type PreviewState,
@@ -616,6 +617,11 @@ describe("detailHtml — selected dataset", () => {
     expect(html).toContain('data-action="detail-close"');
   });
 
+  it("labels the source CTA \"Open source layer\" for an arcgis_rest dataset", () => {
+    expect(d.link_type).toBe("arcgis_rest");
+    expect(html).toContain("Open source layer");
+  });
+
   it("renders the ready probe: geometry, grouped count and field names", () => {
     expect(html).toContain("Polygon");
     expect(html).toContain("1,234");
@@ -623,6 +629,38 @@ describe("detailHtml — selected dataset", () => {
     expect(html).toContain("OBJECTID");
     expect(html).toContain("DEPTH_M");
     expect(html).toContain('data-status="ready"');
+  });
+});
+
+describe("sourceCtaLabel", () => {
+  it("names the CTA for each link_type the catalogue can carry", () => {
+    expect(sourceCtaLabel("arcgis_rest")).toBe("Open source layer");
+    expect(sourceCtaLabel("arcgis_portal")).toBe("Open portal item");
+    expect(sourceCtaLabel("web")).toBe("Open source");
+    expect(sourceCtaLabel(null)).toBe("Open source");
+  });
+});
+
+describe("detailHtml — source CTA matches link_type", () => {
+  it("opens a portal item, not a layer, for an arcgis_portal dataset", () => {
+    const portal = dataset({ link_type: "arcgis_portal", feature_queryable: false, service_root: null });
+    const html = detailHtml(portal, { status: "unavailable" }, portal.id);
+    expect(html).toContain("Open portal item");
+    expect(html).not.toContain("Open source layer");
+  });
+
+  it("uses the generic \"Open source\" label for a plain web link", () => {
+    const web = dataset({ link_type: "web", feature_queryable: false, service_root: null });
+    const html = detailHtml(web, { status: "unavailable" }, web.id);
+    expect(html).toContain(">Open source<");
+    expect(html).not.toContain("Open source layer");
+    expect(html).not.toContain("Open portal item");
+  });
+
+  it("uses the generic label for a null link_type too", () => {
+    const noType = dataset({ link_type: null });
+    const html = detailHtml(noType, { status: "unavailable" }, noType.id);
+    expect(html).toContain(">Open source<");
   });
 });
 
