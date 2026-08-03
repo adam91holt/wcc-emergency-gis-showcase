@@ -177,6 +177,15 @@
               <use href="#icon-search" />
             </svg>
             <input id="search" type="search" placeholder="Search by name, authority or theme…" autocomplete="off" />
+            <!-- Filled and cleared by main.ts's renderCatalogue() on every
+                 keystroke: empty at rest, then either a match count against
+                 the catalogue total or the zero-match wording the visual
+                 `.empty` state below (#app) also uses. aria-live carries the
+                 same information to screen-reader users that the sighted
+                 board already gives by redrawing the card grid, and the
+                 visible text gives everyone a stated result instead of only
+                 an animated redraw to infer from. -->
+            <p class="search__status" id="search-status" aria-live="polite"></p>
           </div>
 
           <dl class="ledger">
@@ -209,14 +218,15 @@
       <!-- The colour key is the board's core visual grammar — the scope
            stripe on every card and the hazard channel hues used throughout
            the board — so on a screen wide enough to show it alongside the
-           catalogue (≥ 40rem, see .hero-keys[open] > summary in style.css)
-           it renders open and its summary row is inert: a new reader needs
-           it the moment the card grid appears, not one tap later. Below
-           that width the seven-plus channel rows, the scope key and the
-           About disclosure would otherwise stack into a wall that pushes
-           #app off the first screen, so on narrow viewports this is a real,
-           user-operable disclosure — closed by the tiny synchronous script
-           just after it, before first paint, and re-openable with one tap. -->
+           catalogue (≥ 40rem) the tiny synchronous script just after this
+           element leaves it open: a new reader needs it the moment the card
+           grid appears, not one tap later. Below that width the seven-plus
+           channel rows, the scope key and the About disclosure would
+           otherwise stack into a wall that pushes #app off the first screen,
+           so there that same script closes it before first paint instead.
+           At every width this is the same real, user-operable disclosure —
+           chevron, hover and keyboard toggle all present — so collapsing or
+           reopening it always behaves the way it looks like it will. -->
       <details class="hero-keys panel" id="hero-keys" aria-labelledby="hero-keys-title" open>
         <summary class="hero__summary">
           <span class="hero__summary-text">
@@ -254,19 +264,19 @@
                    quietly reintroduce that. -->
               <ul class="channel-index" id="channel-index" aria-labelledby="channel-key-label">
                 <li class="channel" aria-hidden="true">
-                  <span class="channel__name skeleton skeleton--text" style="inline-size: 70%"></span>
-                  <span class="channel__count skeleton skeleton--text" style="inline-size: 1.5rem"></span>
-                  <span class="channel__track"><span class="skeleton" style="display: block; inline-size: 60%; block-size: 100%; border-radius: inherit;"></span></span>
+                  <span class="channel__name skeleton skeleton--text skeleton--w-lg"></span>
+                  <span class="channel__count figure"></span>
+                  <span class="channel__track"><span class="skeleton channel__track-fill skeleton--w-md"></span></span>
                 </li>
                 <li class="channel" aria-hidden="true">
-                  <span class="channel__name skeleton skeleton--text" style="inline-size: 50%"></span>
-                  <span class="channel__count skeleton skeleton--text" style="inline-size: 1.5rem"></span>
-                  <span class="channel__track"><span class="skeleton" style="display: block; inline-size: 85%; block-size: 100%; border-radius: inherit;"></span></span>
+                  <span class="channel__name skeleton skeleton--text skeleton--w-md"></span>
+                  <span class="channel__count figure"></span>
+                  <span class="channel__track"><span class="skeleton channel__track-fill skeleton--w-xl"></span></span>
                 </li>
                 <li class="channel" aria-hidden="true">
-                  <span class="channel__name skeleton skeleton--text" style="inline-size: 60%"></span>
-                  <span class="channel__count skeleton skeleton--text" style="inline-size: 1.5rem"></span>
-                  <span class="channel__track"><span class="skeleton" style="display: block; inline-size: 35%; block-size: 100%; border-radius: inherit;"></span></span>
+                  <span class="channel__name skeleton skeleton--text skeleton--w-md"></span>
+                  <span class="channel__count figure"></span>
+                  <span class="channel__track"><span class="skeleton channel__track-fill skeleton--w-sm"></span></span>
                 </li>
               </ul>
               <p class="channel-note">
@@ -374,31 +384,31 @@
           </div>
           <div class="grid">
             <div class="skeleton-card" data-scope="wcc">
-              <span class="skeleton skeleton--title" style="inline-size: 78%"></span>
+              <span class="skeleton skeleton--title skeleton--w-xl"></span>
               <span class="skeleton-card__meta">
-                <span class="skeleton skeleton--text" style="inline-size: 40%"></span>
+                <span class="skeleton skeleton--text skeleton--w-sm"></span>
               </span>
-              <span class="skeleton skeleton--text skeleton--link" style="inline-size: 26%"></span>
+              <span class="skeleton skeleton--text skeleton--link skeleton--w-xs"></span>
             </div>
             <div class="skeleton-card" data-scope="regional">
-              <span class="skeleton skeleton--title" style="inline-size: 64%"></span>
+              <span class="skeleton skeleton--title skeleton--w-lg"></span>
               <span class="skeleton-card__meta">
-                <span class="skeleton skeleton--text" style="inline-size: 52%"></span>
+                <span class="skeleton skeleton--text skeleton--w-md"></span>
               </span>
-              <span class="skeleton skeleton--text skeleton--link" style="inline-size: 30%"></span>
+              <span class="skeleton skeleton--text skeleton--link skeleton--w-xs"></span>
             </div>
             <div class="skeleton-card" data-scope="national">
-              <span class="skeleton skeleton--title" style="inline-size: 86%"></span>
+              <span class="skeleton skeleton--title skeleton--w-xl"></span>
               <span class="skeleton-card__meta">
-                <span class="skeleton skeleton--text" style="inline-size: 36%"></span>
+                <span class="skeleton skeleton--text skeleton--w-sm"></span>
               </span>
             </div>
             <div class="skeleton-card" data-scope="wcc">
-              <span class="skeleton skeleton--title" style="inline-size: 70%"></span>
+              <span class="skeleton skeleton--title skeleton--w-lg"></span>
               <span class="skeleton-card__meta">
-                <span class="skeleton skeleton--text" style="inline-size: 46%"></span>
+                <span class="skeleton skeleton--text skeleton--w-sm"></span>
               </span>
-              <span class="skeleton skeleton--text skeleton--link" style="inline-size: 28%"></span>
+              <span class="skeleton skeleton--text skeleton--link skeleton--w-xs"></span>
             </div>
           </div>
         </div>

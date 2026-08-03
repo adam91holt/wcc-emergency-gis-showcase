@@ -351,6 +351,8 @@ you do not need your own media query.
 | `.num` | Mono + tabular figures |
 | `.figure` | Mono + tabular figures **and** the empty-state skeleton, for script-written numbers |
 | `.skeleton`, `.skeleton--text`, `.skeleton--title`, `.skeleton--heading`, `.skeleton--pill`, `.skeleton--link`, `.skeleton-card` | The loading convention |
+| `.skeleton--w-xs` … `.skeleton--w-xl` | The skeleton width scale (25/40/55/70/85%) — compose onto a `.skeleton--text`/`.skeleton--title` instead of an inline `inline-size` |
+| `.channel__track-fill` | The channel read-out's placeholder bar fill: same geometry as the real `.channel__bar`, neutral skeleton colour |
 
 ### Icons
 
@@ -370,7 +372,19 @@ panel; `.skeleton-card` already matches a `.ds` card exactly. The sheen is a
 
 For numbers, mark the element `.figure` and the placeholder comes free: an
 empty `.figure` renders a pulsing, figure-shaped block sized in `ch`, and stops
-the moment its writer sets `textContent`. No per-component rule required.
+the moment its writer sets `textContent`. No per-component rule required. This
+is also why the channel read-out's three generic placeholder rows give their
+count span the plain `figure` class rather than a `.skeleton` of its own — the
+element that eventually holds a real count (`countEl.className = "channel__count
+figure"` in the boot module) and the placeholder that stands in for it should
+be the same class, not two different skeleton conventions for one field.
+
+For a text/title line's *length*, reach for the width scale —
+`--skeleton-w-xs` (25%) through `--skeleton-w-xl` (85%), applied via
+`.skeleton--w-xs` … `.skeleton--w-xl` — instead of a raw inline
+`inline-size: 42%`. Pick whichever step reads closest to the real content's
+usual length; the point is that every placeholder's geometry, not just its
+colour and shimmer, comes from `theme.css`.
 
 Live examples ship in the shell: every ledger figure, every channel count and
 every tier count carries `.figure` and holds a placeholder until its writer

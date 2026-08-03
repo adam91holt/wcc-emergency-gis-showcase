@@ -218,6 +218,17 @@
   --skeleton-base: #1a212b;
   --skeleton-sheen: rgb(255 255 255 / 0.07);
 
+  /* A small width scale for skeleton text/bar placeholders, named like the
+   * type scale (xs → xl) rather than a literal percentage, so a card title,
+   * a meta line or a channel-bar fill all draw their varying line lengths
+   * from the same shared steps instead of a one-off inline percentage per
+   * element. Pick the step closest to the real content's usual length. */
+  --skeleton-w-xs: 25%;
+  --skeleton-w-sm: 40%;
+  --skeleton-w-md: 55%;
+  --skeleton-w-lg: 70%;
+  --skeleton-w-xl: 85%;
+
   /* The masthead's ambient signal sweep — the one looping animation we allow. */
   --sweep-color: rgb(255 166 61 / 0.9);
 

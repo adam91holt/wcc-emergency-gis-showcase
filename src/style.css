@@ -521,6 +521,40 @@ html[data-theme="dark"] .theme-toggle__icon--moon {
   margin-top: auto;
 }
 
+/* The width scale itself: five named steps so a placeholder's line length is
+ * always a token, never a raw inline percentage. Compose with
+ * .skeleton--text / .skeleton--title / .skeleton-card__meta as needed. */
+.skeleton--w-xs {
+  inline-size: var(--skeleton-w-xs);
+}
+
+.skeleton--w-sm {
+  inline-size: var(--skeleton-w-sm);
+}
+
+.skeleton--w-md {
+  inline-size: var(--skeleton-w-md);
+}
+
+.skeleton--w-lg {
+  inline-size: var(--skeleton-w-lg);
+}
+
+.skeleton--w-xl {
+  inline-size: var(--skeleton-w-xl);
+}
+
+/* The channel read-out's placeholder bar fill. Same block-size/border-radius
+ * as the real .channel__bar it stands in for (below), but left in the
+ * neutral .skeleton background rather than --channel-color/--accent, since
+ * no theme is known yet — compose with a .skeleton--w-* step for the fill
+ * amount instead of an inline inline-size. */
+.channel__track-fill {
+  display: block;
+  block-size: 100%;
+  border-radius: inherit;
+}
+
 /* ====================================================================== *
  * Layout shell
  * ====================================================================== */
@@ -662,6 +696,16 @@ main > *,
   color: var(--accent);
 }
 
+/* Empty (and so invisible) at rest — see resultsStatus() in main.ts. Once a
+ * term is typed it takes up its own line under the field rather than pushing
+ * layout around: fixed line-height whether or not it currently holds text. */
+.search__status {
+  min-block-size: 1em;
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
 #search {
   width: 100%;
   min-width: 0;
@@ -771,33 +815,23 @@ main > * + * {
 /* ---- Hero keys: the colour legend ---------------------------------------
  * The scope stripe on each card and the hazard-channel read-out are the
  * board's core visual grammar. From 40rem there is room to show the decoder
- * beside the catalogue, so the panel is plain, not a real disclosure: the
- * summary row goes inert (`pointer-events: none`, no chevron, no hover) and
- * the tiny script after this element in index.html has left it `open` — a
- * new reader sees it the instant the card grid appears. Below 40rem the same
- * seven-plus channel rows plus the scope key would stack into a wall that
- * pushes the searchable catalogue off the first screen, so there it is a
- * real, user-operable `<details>`: closed by that same script before first
- * paint, one tap from open. Kept dense (a ruled chip grid, not prose) either
- * way, so open or closed it never reads as a landing-page-sized hero. Gets
- * the same entrance rise as the rest of the shell. */
+ * beside the catalogue, so the tiny script after this element in index.html
+ * leaves it `open` — a new reader sees it the instant the card grid appears.
+ * Below 40rem the same seven-plus channel rows plus the scope key would stack
+ * into a wall that pushes the searchable catalogue off the first screen, so
+ * that same script closes it before first paint instead. At every width,
+ * though, this stays the same real, user-operable `<details>` — chevron,
+ * hover and keyboard toggle all present and consistent — so a reader who
+ * does collapse or reopen it (mouse, touch or keyboard) always gets the
+ * affordance that told them they could; a control that looks inert but still
+ * answers to Enter/Space is worse than one that is plainly interactive
+ * everywhere. Kept dense (a ruled chip grid, not prose) either way, so open
+ * or closed it never reads as a landing-page-sized hero. Gets the same
+ * entrance rise as the rest of the shell. */
 .hero-keys {
   padding: 0;
   overflow: hidden;
   animation: rise var(--duration-slow) var(--ease-out) both;
-}
-
-/* ≥ 40rem: a static panel, not a control — the summary row cannot be toggled
- * and shows no affordance to try. */
-@media (min-width: 40rem) {
-  .hero-keys > summary {
-    cursor: default;
-    pointer-events: none;
-  }
-
-  .hero-keys .hero__chevron {
-    display: none;
-  }
 }
 
 .hero-keys[open] > summary {
@@ -1066,16 +1100,34 @@ main > * + * {
  * ====================================================================== */
 
 /* #app's own element is never replaced — only its innerHTML, on every
- * keystroke in the search field (see main.ts). Putting the entrance motion
- * here (rather than on the per-card `.ds` elements the innerHTML swap
- * recreates) means the catalogue fades+rises exactly once, on first paint,
- * instead of restarting on every character typed. */
+ * keystroke in the search field (see main.ts). The container's own rise
+ * plays exactly once, on first paint, and is never repeated on top of it —
+ * that motion is reserved for a genuine mount. The sections and cards it
+ * holds are recreated on every keystroke, though, and each carries its own
+ * short, staggered enter (below) so the redraw itself reads as a filter
+ * responding to input, not a silent swap. */
 #app {
   animation: rise var(--duration-slow) var(--ease-out) both;
 }
 
 #app > section + section {
   margin-top: var(--space-7);
+}
+
+/* Each section/card supplies its own `--stagger-i` (0, 1, 2…, capped — see
+ * MAX_STAGGER in main.ts) as an inline custom property, the same idiom the
+ * hero read-out uses for --channel-color/--share. Multiplying it by the
+ * shared --stagger-step token turns a flat re-render into a brief cascade,
+ * matching the "stagger when several land" rule the rest of the shell's
+ * motion follows. */
+#app section {
+  animation: rise var(--duration-base) var(--ease-out) both;
+  animation-delay: calc(var(--stagger-i, 0) * var(--stagger-step));
+}
+
+.grid > .ds {
+  animation: card-enter var(--duration-base) var(--ease-out) both;
+  animation-delay: calc(var(--stagger-i, 0) * var(--stagger-step));
 }
 
 #app section h2 {
@@ -1275,6 +1327,21 @@ main > * + * {
   from {
     opacity: 0;
     transform: translateY(var(--lift-2));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* The per-card filter-result enter: --lift-1 (2px) rather than --lift-2 (8px)
+ * — a card settling into a redrawn grid is a small correction, not a panel
+ * mounting, so it travels the smaller of the two rise distances the rest of
+ * the shell already uses (see --lift-1/--lift-2 in theme.css). */
+@keyframes card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(var(--lift-1));
   }
   to {
     opacity: 1;
