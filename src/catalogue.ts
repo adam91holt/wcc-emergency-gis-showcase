@@ -136,10 +136,16 @@ export function climateDatasets(list: Dataset[] = datasets()): Dataset[] {
 }
 
 /** The ArcGIS REST `/query` URL for a dataset's resolved layer, or null when
- * the dataset isn't queryable (no service_root, or no resolved layer index). */
+ * the dataset isn't queryable (no service_root, or no usable layer index).
+ * Fallback order matches the fields' own semantics: resolved_layer is the
+ * upstream-resolved, already-correct index; when that's absent, default_child
+ * is the documented sibling to use when this row's own service/layer_id is a
+ * non-queryable group; only then does the raw layer_id apply. Skipping
+ * default_child would either return null for rows that do have a queryable
+ * child, or build a URL against a Group Layer, which ArcGIS REST rejects. */
 export function layerQueryUrl(d: Dataset): string | null {
   if (!d.feature_queryable || !d.service_root) return null;
-  const layer = d.resolved_layer ?? d.layer_id;
+  const layer = d.resolved_layer ?? d.default_child ?? d.layer_id;
   if (layer == null) return null;
   return `${d.service_root}/${layer}/query?where=1%3D1&outFields=*&f=json`;
 }

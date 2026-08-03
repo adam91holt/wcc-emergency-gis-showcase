@@ -107,10 +107,37 @@ describe("layerQueryUrl", () => {
     );
   });
 
-  it("returns null when the dataset has no resolved or fallback layer index", () => {
-    // shaking-layers is feature_queryable but both resolved_layer and
-    // layer_id are null in the bundled data — there's nothing to query.
+  it("falls back to default_child when resolved_layer and layer_id are both null", () => {
+    // shaking-layers is feature_queryable, resolved_layer and layer_id are
+    // both null in the bundled data, but default_child (1) names the
+    // queryable sibling layer — that's what should be used, not null.
     const d = findById("shaking-layers")!;
+    expect(d.resolved_layer).toBeNull();
+    expect(d.layer_id).toBeNull();
+    expect(d.default_child).toBe(1);
+    expect(layerQueryUrl(d)).toBe(
+      `${d.service_root}/1/query?where=1%3D1&outFields=*&f=json`,
+    );
+  });
+
+  it("prefers default_child over a group layer_id", () => {
+    // tsunami-hazard-overlay's layer_id (41) is the non-queryable group
+    // layer itself; default_child (42) is the queryable sibling. The query
+    // URL must target 42, not the group layer 41.
+    const d = findById("tsunami-hazard-overlay")!;
+    expect(d.resolved_layer).toBeNull();
+    expect(d.layer_id).toBe(41);
+    expect(d.default_child).toBe(42);
+    expect(layerQueryUrl(d)).toBe(
+      `${d.service_root}/42/query?where=1%3D1&outFields=*&f=json`,
+    );
+  });
+
+  it("returns null when there is no resolved layer, default_child, or layer_id at all", () => {
+    // No bundled row hits this combination (every feature_queryable row with
+    // a service_root has at least one of the three), so this exercises the
+    // final `layer == null` guard directly with a synthetic dataset.
+    const d = { ...findById("shaking-layers")!, resolved_layer: null, default_child: null, layer_id: null };
     expect(layerQueryUrl(d)).toBeNull();
   });
 

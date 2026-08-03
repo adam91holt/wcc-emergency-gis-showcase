@@ -9,7 +9,10 @@
 //   #scope=<scope>         — the active scope filter (wcc/regional/national)
 //   #layers=<id>,<id>,...  — comma-separated ids of layers toggled on the map
 // All keys are optional and independent; unknown keys are ignored on parse
-// so the hash can grow without breaking older code.
+// (parseHash/getState never surface them, so this router never trips over a
+// key it doesn't know about) but setState() preserves them verbatim in the
+// raw hash string, so the hash can grow without breaking older code and
+// without a later feature's own hash keys getting clobbered by this router.
 
 export interface RouteState {
   dataset?: string;
@@ -28,12 +31,11 @@ export function parseHash(hash: string): RouteState {
   const state: RouteState = {};
   if (!raw) return state;
 
-  let params: URLSearchParams;
-  try {
-    params = new URLSearchParams(raw);
-  } catch {
-    return state;
-  }
+  // URLSearchParams parsing is deliberately lenient (application/
+  // x-www-form-urlencoded) — it never throws on malformed input, it just
+  // produces empty/partial results, which is exactly the "never throws"
+  // behaviour this function documents.
+  const params = new URLSearchParams(raw);
 
   const dataset = params.get("dataset");
   if (dataset) state.dataset = dataset;
@@ -61,6 +63,35 @@ export function toHash(state: RouteState): string {
   if (state.theme) params.set("theme", state.theme);
   if (state.scope) params.set("scope", state.scope);
   if (state.layers && state.layers.length > 0) params.set("layers", state.layers.join(","));
+  const serialised = params.toString();
+  return serialised ? `#${serialised}` : "";
+}
+
+/** Pure merge: apply `patch` to a raw hash string (with or without the
+ * leading `#`), touching only the keys named in `patch` and leaving any
+ * other query-string keys already present untouched. This is what lets a
+ * later feature module put its own key (e.g. `#view=table`) in the hash
+ * without this router's setState() wiping it out on the next call. Exported
+ * so the merge logic is covered by a plain unit test without needing
+ * `location`/`history` (this repo's test environment has no DOM). */
+export function mergeHash(hash: string, patch: Partial<RouteState>): string {
+  const raw = hash.startsWith("#") ? hash.slice(1) : hash;
+  const params = new URLSearchParams(raw);
+  for (const key of KEYS) {
+    if (!(key in patch)) continue;
+    const value = patch[key];
+    if (value === undefined) {
+      params.delete(key);
+      continue;
+    }
+    if (key === "layers") {
+      const layers = value as string[];
+      if (layers.length > 0) params.set("layers", layers.join(","));
+      else params.delete("layers");
+    } else {
+      params.set(key, value as string);
+    }
+  }
   const serialised = params.toString();
   return serialised ? `#${serialised}` : "";
 }
@@ -94,23 +125,25 @@ export function getState(): RouteState {
 }
 
 /** Merge `patch` into the current state and write it back to the hash. Keys
- * set to `undefined` in `patch` are removed from the state. No-ops outside a
- * browser (e.g. during tests / SSR). */
+ * set to `undefined` in `patch` are removed from the state; keys not present
+ * in `patch` are left as-is, including hash keys this router doesn't know
+ * about (see mergeHash). No-ops outside a browser (e.g. during tests / SSR). */
 export function setState(patch: Partial<RouteState>, options: { replace?: boolean } = {}): void {
   if (typeof location === "undefined" || typeof history === "undefined") return;
 
-  const next: RouteState = { ...getState() };
-  for (const key of KEYS) {
-    if (!(key in patch)) continue;
-    const value = patch[key];
-    if (value === undefined) delete next[key];
-    else (next as Record<string, unknown>)[key] = value;
-  }
+  const current = currentHash();
+  const hash = mergeHash(current, patch) || "#";
+  const normalisedCurrent = current === "" || current === "#" ? "#" : current;
 
-  const hash = toHash(next) || "#";
-  const url = `${location.pathname}${location.search}${hash}`;
-  if (options.replace) history.replaceState(null, "", url);
-  else history.pushState(null, "", url);
+  // Skip the history write entirely when nothing actually changed, so
+  // repeated setState() calls with the same effective state don't pile up
+  // duplicate entries that turn Back into a no-op (the fragment is
+  // unchanged, so no hashchange fires and the user has to press Back twice).
+  if (hash !== normalisedCurrent) {
+    const url = `${location.pathname}${location.search}${hash}`;
+    if (options.replace) history.replaceState(null, "", url);
+    else history.pushState(null, "", url);
+  }
 
   notify();
 }
