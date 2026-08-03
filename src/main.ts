@@ -7,8 +7,9 @@
 // FeatureModule doc below for why that direction matters.) This is still a
 // SEED for the card list itself — the factory grows the four named mounts
 // from here.
-import { byTheme, search, label, catalogue, type Dataset } from "./catalogue";
+import { byTheme, label, catalogue, type Dataset } from "./catalogue";
 import { getState, subscribe, type RouteState } from "./router";
+import renderFilters, { applyFilters, filterStateFromRoute, clearAll, selectDataset } from "./filters";
 
 /** The four stable mount points declared in index.html, one per feature ticket. */
 export type MountId = "filters" | "map" | "detail" | "charts";
@@ -58,34 +59,67 @@ function renderAllMounts(state: RouteState): void {
   for (const id of registry.keys()) renderMount(id, state);
 }
 
-function card(d: Dataset): string {
+function card(d: Dataset, selectedId: string | undefined): string {
   const link = d.url ? `<a href="${d.url}" target="_blank" rel="noreferrer">source ↗</a>` : "";
-  return `<article class="ds" data-scope="${d.scope}">
-    <h3>${label(d)}</h3>
+  const selected = d.id === selectedId;
+  return `<article class="ds${selected ? " is-selected" : ""}" data-scope="${d.scope}" data-id="${d.id}">
+    <button type="button" class="ds-select" aria-pressed="${selected}">
+      <h3>${label(d)}</h3>
+    </button>
     <p class="meta">${d.scope} · ${d.authority ?? "—"}${d.year ? ` · ${d.year}` : ""}</p>
     ${link}
   </article>`;
 }
 
-function renderCatalogue(term: string): void {
+/** Renders the catalogue card list for the current route state — filtered
+ * through filters.ts's theme × scope × query predicate, so this list and the
+ * filter panel are always looking at the same data. */
+function renderCatalogue(state: RouteState): void {
   const app = document.querySelector<HTMLDivElement>("#app");
   if (!app) return;
-  const grouped = byTheme(search(term));
+  const list = applyFilters(filterStateFromRoute(state));
+  if (list.length === 0) {
+    app.innerHTML = `<div class="empty-state">
+      <p>No datasets match the current filters.</p>
+      <button type="button" class="btn-reset" data-action="reset-filters">Clear filters</button>
+    </div>`;
+    return;
+  }
+  const grouped = byTheme(list);
   const sections = [...grouped.entries()]
     .map(([theme, ds]) => `<section><h2>${theme} <span class="count">${ds.length}</span></h2>
-      <div class="grid">${ds.map(card).join("")}</div></section>`)
+      <div class="grid">${ds.map((d) => card(d, state.dataset)).join("")}</div></section>`)
     .join("");
-  app.innerHTML = sections || `<p class="empty">No datasets match “${term}”.</p>`;
+  app.innerHTML = sections;
+}
+
+/** Wires the card list's two interactive bits — selecting a dataset and the
+ * empty-state's one-click reset — through a single delegated listener, since
+ * #app's innerHTML is fully replaced on every render. */
+function wireCardList(app: HTMLDivElement): void {
+  app.addEventListener("click", (event) => {
+    const target = event.target as HTMLElement;
+    if (target.closest('[data-action="reset-filters"]')) {
+      clearAll();
+      return;
+    }
+    const select = target.closest<HTMLElement>(".ds-select");
+    const id = select?.closest<HTMLElement>(".ds")?.dataset.id;
+    if (id) selectDataset(id);
+  });
 }
 
 function boot(): void {
   const app = document.querySelector<HTMLDivElement>("#app");
   if (!app) return;
   document.querySelector<HTMLElement>("#total")!.textContent = String(catalogue.counts.total);
-  const input = document.querySelector<HTMLInputElement>("#search");
-  input?.addEventListener("input", () => renderCatalogue(input.value));
-  renderCatalogue("");
-  subscribe(renderAllMounts);
+  wireCardList(app);
+  registerMount("filters", renderFilters);
+  renderCatalogue(getState());
+  subscribe((state) => {
+    renderAllMounts(state);
+    renderCatalogue(state);
+  });
 }
 
 if (typeof document !== "undefined") boot();

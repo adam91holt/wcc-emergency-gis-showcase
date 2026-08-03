@@ -1,0 +1,389 @@
+/* Filter/search/discovery layer styling. Reuses the tokens defined in
+ * :root by style.css (--fg/--bg/--card/--line/--accent) rather than
+ * introducing new one-off colours — this file only adds density, motion and
+ * type-scale rules on top of that shared palette. */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Filter panel                                                            */
+/* ---------------------------------------------------------------------- */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 20px 28px;
+  padding: 16px;
+  margin: 4px 0 8px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.filters__group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.filters__group--themes {
+  flex: 1 1 320px;
+}
+
+.filters__label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg);
+  opacity: 0.55;
+}
+
+.scope-control {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 3px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.scope-btn,
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: transform 120ms ease, background-color 120ms ease, border-color 120ms ease, opacity 120ms ease;
+}
+
+.chip {
+  background: var(--bg);
+  border-color: var(--line);
+  border-radius: 999px;
+}
+
+.scope-btn svg,
+.chip svg {
+  color: var(--accent);
+  flex: none;
+}
+
+.scope-btn:hover,
+.chip:hover {
+  border-color: var(--accent);
+}
+
+.scope-btn:focus-visible,
+.chip:focus-visible,
+.filters__clear:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.scope-btn:active,
+.chip:active {
+  transform: scale(0.96);
+}
+
+.scope-btn.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+
+.scope-btn.is-active svg,
+.chip.is-active svg {
+  color: inherit;
+}
+
+.chip.is-active {
+  background: color-mix(in srgb, var(--accent) 18%, var(--card));
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.theme-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fcount {
+  font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.65;
+}
+
+.scope-btn.is-active .fcount,
+.chip.is-active .fcount {
+  opacity: 0.85;
+}
+
+.filters__meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+  padding-top: 2px;
+}
+
+.filters__count {
+  font-size: 12.5px;
+  color: var(--fg);
+  opacity: 0.65;
+  white-space: nowrap;
+}
+
+.filters__clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, opacity 120ms ease;
+  white-space: nowrap;
+}
+
+.filters__clear:hover {
+  border-color: var(--accent);
+}
+
+.filters__clear:active {
+  transform: scale(0.96);
+}
+
+.filters__clear[hidden] {
+  display: none;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Search combobox                                                        */
+/* ---------------------------------------------------------------------- */
+
+.search-combobox {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin-top: 0.75rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.search-combobox:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.search-combobox__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: 0.7rem;
+  color: var(--fg);
+  opacity: 0.5;
+  flex: none;
+}
+
+.search-combobox #search {
+  flex: 1;
+  margin: 0;
+  border: none;
+  background: transparent;
+}
+
+.search-combobox #search:focus {
+  outline: none;
+}
+
+.search-listbox {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+  max-height: 320px;
+  overflow-y: auto;
+  animation: filters-suggest-in 140ms ease both;
+}
+
+.search-option {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 0.4rem;
+  cursor: pointer;
+}
+
+.search-option__name {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.search-option__meta {
+  font-size: 11px;
+  color: var(--fg);
+  opacity: 0.55;
+  white-space: nowrap;
+}
+
+.search-option.is-active {
+  background: color-mix(in srgb, var(--accent) 16%, var(--card));
+}
+
+.search-option.is-active .search-option__name {
+  color: var(--accent);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Empty state + card selection (existing #app card list)                 */
+/* ---------------------------------------------------------------------- */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 2rem 0;
+  animation: filters-fade-up 200ms ease both;
+}
+
+.empty-state p {
+  margin: 0;
+  opacity: 0.7;
+}
+
+.btn-reset {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--bg);
+  background: var(--accent);
+  border: none;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.9rem;
+  cursor: pointer;
+  transition: transform 120ms ease, opacity 120ms ease;
+}
+
+.btn-reset:hover {
+  opacity: 0.9;
+}
+
+.btn-reset:active {
+  transform: scale(0.97);
+}
+
+.ds-select {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.ds-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 0.3rem;
+}
+
+.ds.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+@keyframes filters-suggest-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes filters-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scope-btn,
+  .chip,
+  .filters__clear,
+  .btn-reset,
+  .search-combobox,
+  .search-listbox,
+  .empty-state {
+    transition: none;
+    animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .filters {
+    padding: 12px;
+    gap: 14px 16px;
+  }
+
+  .filters__meta {
+    margin-left: 0;
+    width: 100%;
+    justify-content: space-between;
+  }
+}
