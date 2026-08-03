@@ -287,7 +287,11 @@ function setRowStatus(id: string, status: RowStatus, detail?: string): void {
   const row = view?.rows.get(id);
   if (!row) return;
   row.item.dataset.status = status;
-  row.focus.hidden = status !== "live";
+  // A "live" layer whose service returned zero features (or only
+  // null-geometry ones) has no extent to fly to — leaving the button visible
+  // then would give a keyboard-reachable control that silently does nothing
+  // when clicked, so gate it on the same bounds check focusLayer() uses.
+  row.focus.hidden = status !== "live" || layerBounds(id) === null;
   row.retry.hidden = status !== "error";
   const text =
     status === "loading"
@@ -621,6 +625,22 @@ export default function renderMap(root: HTMLElement, state: RouteState): void {
   if (view && view.root === root && leaflet) {
     syncView(leaflet, state);
     return;
+  }
+  if (view && view.root !== root) {
+    // Re-mounting into a different root (HMR, or any future re-init) — the
+    // previous root's DOM (and the Leaflet map bound to it) is gone or about
+    // to be replaced, so tear down the module singletons that reference it.
+    // Without this, the old L.map() is never .remove()d (it keeps its tile
+    // requests and window listeners alive), and `wanted`/`rowStatus` would
+    // still list the old mount's layers as already active — syncView()'s
+    // `if (!wanted.has(id))` guard would then skip activateLayer() entirely
+    // for the new mount, leaving its map empty while the panel claims those
+    // layers are live.
+    view.map.remove();
+    view = null;
+    drawn.clear();
+    wanted.clear();
+    rowStatus.clear();
   }
   if (booting) return;
   booting = true;
