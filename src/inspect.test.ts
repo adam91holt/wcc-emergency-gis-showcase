@@ -9,7 +9,7 @@ import {
   type InspectLayer,
   type LonLat,
 } from "./inspect";
-import { toleranceForZoom } from "./map";
+import { inspectionSummary, layerStyle, toleranceForZoom } from "./map";
 import type {
   Feature,
   FeatureCollection,
@@ -324,6 +324,70 @@ describe("inspectPoint", () => {
     expect(result.hits).toEqual([]);
     expect(result.misses).toEqual([]);
     expect(result.point).toEqual(INSIDE);
+  });
+});
+
+describe("inspectionSummary", () => {
+  const flood = layer({
+    id: "flood-extent",
+    label: "Flood hazard extent",
+    collection: collection(feature(SQUARE)),
+  });
+  const faults = layer({
+    id: "active-faults",
+    label: "Active faults",
+    collection: collection(feature(FAULT)),
+  });
+
+  it("names every covering layer and how many of the drawn set answered", () => {
+    const said = inspectionSummary(inspectPoint([174.75, -41.3], [flood, faults], 0.0002));
+    expect(said).toBe("This point is in 1 of 2 drawn layers: Flood hazard extent.");
+  });
+
+  it("marks a proximity hit as nearby rather than covering", () => {
+    const said = inspectionSummary(inspectPoint([174.781, -41.29], [faults], 0.0008));
+    expect(said).toBe("This point is in 1 of 1 drawn layer: Active faults, nearby.");
+  });
+
+  it("says so plainly, with the count checked, when nothing covers the point", () => {
+    const said = inspectionSummary(inspectPoint([175.5, -41.3], [flood, faults], 0.0002));
+    expect(said).toBe("No drawn hazard covers this point. Checked 2 drawn layers.");
+  });
+});
+
+describe("layerStyle", () => {
+  const area = feature(SQUARE);
+  const marker = feature({ type: "Point", coordinates: [174.78, -41.29] });
+
+  it("fills a point marker far harder than an extent polygon", () => {
+    // A 5px disc at the polygon's 0.22 fill is a smudge — and a hazard point
+    // nobody can see is a hazard point nobody can click.
+    expect(layerStyle("#4cc9f0", marker).fillOpacity).toBeGreaterThan(0.5);
+    expect(layerStyle("#4cc9f0", area).fillOpacity).toBeLessThan(0.3);
+  });
+
+  it("keeps a point emphatic through hover and inspector highlight", () => {
+    // The regression this guards: restyling a drawn layer with one flat
+    // polygon-shaped object repaints its markers at area opacity for good.
+    for (const emphasis of ["base", "hover", "highlight"] as const) {
+      expect(layerStyle("#4cc9f0", marker, emphasis).fillOpacity).toBeGreaterThan(
+        layerStyle("#4cc9f0", area, emphasis).fillOpacity!,
+      );
+    }
+  });
+
+  it("thickens the stroke as emphasis rises, and never drops it", () => {
+    const base = layerStyle("#ff5d73", area);
+    const hover = layerStyle("#ff5d73", area, "hover");
+    const highlight = layerStyle("#ff5d73", area, "highlight");
+    expect(hover.weight!).toBeGreaterThan(base.weight!);
+    expect(highlight.weight!).toBeGreaterThan(hover.weight!);
+    expect(highlight.fillOpacity!).toBeGreaterThan(base.fillOpacity!);
+  });
+
+  it("paints stroke and fill from the layer's own colour, and defaults to area", () => {
+    expect(layerStyle("#2ec4b6")).toMatchObject({ color: "#2ec4b6", fillColor: "#2ec4b6" });
+    expect(layerStyle("#2ec4b6").fillOpacity).toBe(layerStyle("#2ec4b6", area).fillOpacity);
   });
 });
 

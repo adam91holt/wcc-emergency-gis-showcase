@@ -270,7 +270,12 @@ interface MapView {
   rows: Map<string, LayerRow>;
   count: HTMLElement;
   features: HTMLElement;
+  /** Rolling status of the rack (how many layers are drawn / loading). */
   live: HTMLElement;
+  /** The inspector's verdict. Kept separate from `live` because syncReadout
+   * rewrites that one on every layer status change, which would stamp over an
+   * answer the moment a layer finished loading. */
+  say: HTMLElement;
   clear: HTMLButtonElement;
 }
 
@@ -287,8 +292,43 @@ const drawn = new Map<string, GeoJSONLayer>();
 const wanted = new Set<string>();
 const rowStatus = new Map<string, RowStatus>();
 
-function pathStyle(color: string): PathOptions {
-  return { color, weight: 1.6, opacity: 0.95, fillColor: color, fillOpacity: 0.22 };
+/** How hard a feature is drawn: its resting state, under the pointer, or lit
+ * up because a row in the inspector popup is pointing at it. */
+export type StyleEmphasis = "base" | "hover" | "highlight";
+
+const STROKE_WEIGHT: Record<StyleEmphasis, number> = { base: 1.6, hover: 3, highlight: 3.4 };
+
+/** Fill opacity is per *geometry kind*, not per layer: an extent polygon has
+ * to stay translucent enough to read the two extents under it, but a point
+ * dataset is a 5px disc — at 0.22 it is a smudge, and a point dataset that
+ * cannot be seen cannot be clicked, which would quietly cost the inspector
+ * half the datasets the ticket makes inspectable. */
+const FILL_OPACITY: Record<StyleEmphasis, { point: number; area: number }> = {
+  base: { point: 0.62, area: 0.22 },
+  hover: { point: 0.82, area: 0.42 },
+  highlight: { point: 0.88, area: 0.45 },
+};
+
+/** The draw style for one feature of a drawn layer. Everything that restyles
+ * geometry — the initial draw, the pointer hover, the inspector's highlight —
+ * goes through here, because Leaflet's `setStyle` merges a *flat* options
+ * object into every child of a GeoJSON group: restyling with a single
+ * polygon-shaped object silently repaints circle markers at polygon opacity
+ * and never puts them back. */
+export function layerStyle(
+  color: string,
+  feature?: Feature<Geometry, GeoJsonProperties> | null,
+  emphasis: StyleEmphasis = "base",
+): PathOptions {
+  const type = feature?.geometry?.type;
+  const point = type === "Point" || type === "MultiPoint";
+  return {
+    color,
+    weight: STROKE_WEIGHT[emphasis],
+    opacity: emphasis === "base" ? 0.95 : 1,
+    fillColor: color,
+    fillOpacity: point ? FILL_OPACITY[emphasis].point : FILL_OPACITY[emphasis].area,
+  };
 }
 
 function escapeHtml(value: string): string {
@@ -391,6 +431,20 @@ function inspectorHtml(result: InspectResult, lat: number, lon: number): string 
   </div>`;
 }
 
+/** The same answer as one spoken sentence. A Leaflet popup is a visual answer
+ * only — it takes no focus and carries no live-region role (see its
+ * `_initLayout`), so without this the whole feature is silent to a screen
+ * reader. Pure, so src/inspect.test.ts can assert the wording. */
+export function inspectionSummary(result: InspectResult): string {
+  const total = result.hits.length + result.misses.length;
+  const layers = `${total} drawn layer${total === 1 ? "" : "s"}`;
+  if (result.hits.length === 0) return `No drawn hazard covers this point. Checked ${layers}.`;
+  const names = result.hits
+    .map((h) => (h.mode === "covers" ? h.label : `${h.label}, nearby`))
+    .join("; ");
+  return `This point is in ${result.hits.length} of ${layers}: ${names}.`;
+}
+
 function setRowStatus(id: string, status: RowStatus, detail?: string): void {
   rowStatus.set(id, status);
   const row = view?.rows.get(id);
@@ -468,10 +522,9 @@ async function activateLayer(L: LeafletModule, id: string): Promise<void> {
 
   const color = themeColor(dataset.theme);
   const layer = L.geoJSON(data, {
-    style: () => pathStyle(color),
-    pointToLayer: (_feature, latlng) =>
-      L.circleMarker(latlng, { ...pathStyle(color), radius: 5, fillOpacity: 0.6 }),
-    onEachFeature: (_feature, featureLayer) => {
+    style: (feature) => layerStyle(color, feature),
+    pointToLayer: (feature, latlng) => L.circleMarker(latlng, { ...layerStyle(color, feature), radius: 5 }),
+    onEachFeature: (feature, featureLayer) => {
       // No per-feature popup: the click answer for this map is the point
       // inspector below, which reports every layer covering the spot rather
       // than only the feature that happened to be on top.
@@ -481,8 +534,10 @@ async function activateLayer(L: LeafletModule, id: string): Promise<void> {
       // Every child layer here is a Path (polygon/line) or the circleMarker
       // built above, so setStyle is always present.
       const path = featureLayer as CircleMarker;
-      featureLayer.on("mouseover", () => path.setStyle({ weight: 3, fillOpacity: 0.42 }));
-      featureLayer.on("mouseout", () => path.setStyle(pathStyle(color)));
+      featureLayer.on("mouseover", () => path.setStyle(layerStyle(color, feature, "hover")));
+      featureLayer.on("mouseout", () =>
+        path.setStyle(layerStyle(color, feature, highlighted === id ? "highlight" : "base")),
+      );
     },
   });
   layer.addTo(view.map);
@@ -544,9 +599,10 @@ function highlightLayer(id: string | null): void {
   highlighted = id;
   for (const [layerId, layer] of drawn) {
     const color = themeColor(findById(layerId)?.theme);
-    layer.setStyle(
-      layerId === id ? { ...pathStyle(color), weight: 3.4, opacity: 1, fillOpacity: 0.45 } : pathStyle(color),
-    );
+    const emphasis: StyleEmphasis = layerId === id ? "highlight" : "base";
+    // A style *function* rather than an object: Leaflet hands it each child's
+    // feature, so points keep their heavier fill through the restyle.
+    layer.setStyle((feature) => layerStyle(color, feature, emphasis));
   }
 }
 
@@ -578,6 +634,7 @@ function closeInspector(): void {
   inspectorMark = null;
   inspectorFeatures.clear();
   highlightLayer(null);
+  if (view) view.say.textContent = "";
   if (view && mark) view.map.removeLayer(mark);
   if (view && popup) view.map.closePopup(popup);
 }
@@ -643,6 +700,9 @@ function inspectAt(L: LeafletModule, map: LeafletMap, event: LeafletMouseEvent):
     .setContent(inspectorHtml(result, lat, lng))
     .openOn(map);
   wirePopupContent(L, inspectorPopup);
+  // closeInspector() above blanked this, so even two identical verdicts in a
+  // row are two separate mutations and both get announced.
+  if (view) view.say.textContent = inspectionSummary(result);
 }
 
 function wireInspector(L: LeafletModule, map: LeafletMap): void {
@@ -787,7 +847,8 @@ function buildMarkup(root: HTMLElement): void {
           <p class="hazmap__credit">${ICON_ALERT}<span>Layers are fetched straight from the councils' live ArcGIS services — some may be slow or briefly unavailable.</span></p>
         </div>
       </div>
-      <p class="sr-only" role="status" aria-live="polite"></p>
+      <p class="sr-only hazmap__live" role="status" aria-live="polite"></p>
+      <p class="sr-only hazmap__say" role="status" aria-live="polite"></p>
     </section>`;
 }
 
@@ -907,7 +968,8 @@ export default function renderMap(root: HTMLElement, state: RouteState): void {
         rows: collectRows(root),
         count: root.querySelector<HTMLElement>(".hazmap__count")!,
         features: root.querySelector<HTMLElement>(".hazmap__features")!,
-        live: root.querySelector<HTMLElement>(".sr-only")!,
+        live: root.querySelector<HTMLElement>(".hazmap__live")!,
+        say: root.querySelector<HTMLElement>(".hazmap__say")!,
         clear: root.querySelector<HTMLButtonElement>(".hazmap__clear")!,
       };
       wirePanel(L, root);
