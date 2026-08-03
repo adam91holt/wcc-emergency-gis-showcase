@@ -1,0 +1,609 @@
+/* Projection strip — the climate-charts surface for src/charts.ts.
+ *
+ * Concept (carried on from the discovery console in filters.css, the hazard
+ * rack in map.css and the dossier in detail.css): this is the strip chart
+ * clipped to the bottom of the dispatcher's record card. The card above says
+ * what the dataset *is*; this says what it *projects*. A single mono readout
+ * calls the strongest change, then the scenarios stand as bars on a dashed
+ * zero line — the one line that matters here, because every one of these
+ * layers is a modelled *change*, so anything under the line is a projected
+ * decrease. The strip is instrument-dense on purpose: eight scenarios are
+ * meant to be compared at a glance, not read one at a time.
+ *
+ * Dark-first: the ladder below is authored for dark and ported to light at the
+ * bottom of the token block. Colour comes from the product's owned accent
+ * (--accent, style.css) via --clm-signal — nothing here hardcodes a hue, and
+ * the decrease colour is the same accent stepped toward the tertiary ink so
+ * sign is legible without introducing a second accent. */
+
+:root {
+  /* Surface ladder: page (--bg) → panel → raised → raised-2, 4–6px steps. */
+  --clm-panel: #101a2c;
+  --clm-raised: #16233a;
+  --clm-raised-2: #1d2c47;
+  --clm-line: #23324c;
+  --clm-line-2: #2f4364;
+
+  /* Ink stepped down in luminance, never in opacity. */
+  --clm-ink: #e7edf8;
+  --clm-ink-2: #a4b5d0;
+  --clm-ink-3: #6f819f;
+
+  --clm-signal: var(--accent);
+  --clm-danger: #ff6b81;
+  --clm-veil: rgba(231, 237, 248, 0.07);
+
+  /* Bars: increase in the owned accent, decrease in the same accent stepped
+   * toward the tertiary ink — one accent, two readable weights. */
+  --clm-up: var(--clm-signal);
+  --clm-up-hi: color-mix(in srgb, var(--clm-signal) 78%, #ffffff);
+  --clm-down: color-mix(in srgb, var(--clm-signal) 45%, var(--clm-ink-3));
+  --clm-down-hi: color-mix(in srgb, var(--clm-signal) 62%, #ffffff);
+
+  /* Same paired type as the console, the rack and the dossier: sans chrome,
+   * mono for every number, tabular so bar labels don't jitter. */
+  --clm-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --clm-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+
+  /* Type scale — 7 sizes, 3 weights (400/600/700), held to across the panel. */
+  --clm-fs-label: 10.5px;
+  --clm-fs-micro: 11px;
+  --clm-fs-chip: 12.5px;
+  --clm-fs-body: 13.5px;
+  --clm-fs-lead: 15px;
+  --clm-fs-title: 19px;
+  --clm-fs-readout: 28px;
+
+  --clm-fast: 120ms;
+  --clm-mid: 200ms;
+  --clm-ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --clm-panel: #ffffff;
+    --clm-raised: #f1f5fa;
+    --clm-raised-2: #e6edf6;
+    --clm-line: #dde5ef;
+    --clm-line-2: #c2cfe0;
+    --clm-ink: #0f172a;
+    --clm-ink-2: #48586f;
+    --clm-ink-3: #74839a;
+    --clm-danger: #c2334b;
+    --clm-veil: rgba(15, 23, 42, 0.05);
+    --clm-up-hi: color-mix(in srgb, var(--clm-signal) 80%, #000000);
+    --clm-down: color-mix(in srgb, var(--clm-signal) 40%, var(--clm-ink-3));
+    --clm-down-hi: color-mix(in srgb, var(--clm-signal) 58%, #000000);
+  }
+}
+
+/* Repeated rather than imported: this module owns its own utility so the strip
+ * never depends on another feature's stylesheet being loaded. */
+.clm .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.clm .ico {
+  flex: none;
+  display: block;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Shell                                                                     */
+/* ------------------------------------------------------------------------ */
+
+.clm {
+  position: relative;
+  overflow: hidden;
+  margin: 0 0 20px;
+  padding: 13px 16px 15px 18px;
+  background: var(--clm-panel);
+  border: 1px solid var(--clm-line);
+  border-radius: 14px;
+  font-family: var(--clm-sans);
+  color: var(--clm-ink);
+  /* Mount motion lives on the shell, never on a control inside it, so no
+   * interactive element ends up with a persistent animation transform its own
+   * hover/press state would have to fight. */
+  animation: clm-rise 240ms var(--clm-ease) backwards;
+}
+
+/* The rail reads as "this strip is live": full strength once a series has
+ * landed, muted while it is still being sampled, danger when it failed. */
+.clm__rail {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--clm-signal);
+  opacity: 0.35;
+  transform: scaleY(0.3);
+  transform-origin: top center;
+  transition: transform var(--clm-mid) var(--clm-ease), opacity var(--clm-mid) var(--clm-ease),
+    background-color var(--clm-mid) linear;
+}
+
+.clm[data-status="ready"] .clm__rail {
+  opacity: 1;
+  transform: scaleY(1);
+}
+
+.clm[data-status="error"] .clm__rail {
+  background: var(--clm-danger);
+  opacity: 1;
+  transform: scaleY(1);
+}
+
+/* The single highest-leverage "designed" move: tiny uppercase tracked label. */
+.clm__label,
+.clm__unit,
+.clm__peaklabel {
+  font-size: var(--clm-fs-label);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--clm-ink-3);
+}
+
+/* ------------------------------------------------------------------------ */
+/* Head                                                                      */
+/* ------------------------------------------------------------------------ */
+
+.clm__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px 20px;
+  padding-bottom: 11px;
+  border-bottom: 1px solid var(--clm-line);
+}
+
+.clm__ident {
+  min-width: 0;
+  margin-right: auto;
+}
+
+.clm__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--clm-signal);
+}
+
+.clm__title {
+  margin: 5px 0 0;
+  font-size: var(--clm-fs-title);
+  font-weight: 700;
+  line-height: 1.22;
+  letter-spacing: -0.015em;
+  color: var(--clm-ink);
+}
+
+.clm__aside {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding-top: 2px;
+}
+
+/* The unit, in the council's own wording — the chart's y axis in words. */
+.clm__unitchip {
+  padding: 3px 9px;
+  font-size: var(--clm-fs-label);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--clm-signal);
+  background: color-mix(in srgb, var(--clm-signal) 12%, var(--clm-raised));
+  border: 1px solid color-mix(in srgb, var(--clm-signal) 42%, var(--clm-line));
+  border-radius: 999px;
+}
+
+.clm__retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  font-family: var(--clm-sans);
+  font-size: var(--clm-fs-micro);
+  font-weight: 600;
+  color: var(--clm-ink-2);
+  background: var(--clm-raised-2);
+  border: 1px solid var(--clm-line);
+  border-radius: 7px;
+  cursor: pointer;
+  transition: transform var(--clm-fast) var(--clm-ease), color var(--clm-fast) linear,
+    border-color var(--clm-fast) linear;
+}
+
+.clm__retry:hover {
+  color: var(--clm-ink);
+  border-color: var(--clm-line-2);
+  transform: translateY(-1px);
+}
+
+.clm__retry:active {
+  transform: scale(0.95);
+}
+
+.clm__retry:focus-visible {
+  outline: 2px solid var(--clm-signal);
+  outline-offset: 2px;
+}
+
+.clm__retry[hidden] {
+  display: none;
+}
+
+.clm[data-status="error"] .clm__retry {
+  color: var(--clm-danger);
+  border-color: color-mix(in srgb, var(--clm-danger) 45%, var(--clm-line));
+}
+
+.clm__stage {
+  padding-top: 12px;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Readout — the headline number, in the mono half of the pairing            */
+/* ------------------------------------------------------------------------ */
+
+.clm__readout {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 6px;
+}
+
+.clm__peak {
+  font-family: var(--clm-mono);
+  font-size: var(--clm-fs-readout);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--clm-ink);
+  animation: clm-tick 220ms var(--clm-ease) backwards;
+}
+
+.clm__sep {
+  width: 1px;
+  height: 20px;
+  background: var(--clm-line-2);
+}
+
+.clm__peaklabel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-right: auto;
+  line-height: 1.3;
+}
+
+.clm__peakscenario {
+  font-family: var(--clm-mono);
+  font-size: var(--clm-fs-chip);
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--clm-ink-2);
+}
+
+.clm__n {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  font-family: var(--clm-mono);
+  font-size: var(--clm-fs-lead);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--clm-ink-2);
+}
+
+/* ------------------------------------------------------------------------ */
+/* The chart                                                                 */
+/* ------------------------------------------------------------------------ */
+
+.clm__figure {
+  margin: 0;
+  max-width: 760px;
+}
+
+/* Below ~600px the strip scrolls rather than crushing eight scenarios into
+ * illegible slivers — the SVG carries its own min-width. */
+.clm__scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: 6px 0 2px;
+}
+
+.clm__chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* The zero line: dashed, so it reads as a reference rather than as data. */
+.clm__zero {
+  stroke: var(--clm-line-2);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+}
+
+/* Hairline where the projection horizon changes — the strip's two (or more)
+ * blocks, marked without a legend. */
+.clm__split {
+  stroke: var(--clm-line);
+  stroke-width: 1;
+}
+
+.clm__zerolabel {
+  font-family: var(--clm-mono);
+  font-size: 11px;
+  font-weight: 700;
+  fill: var(--clm-ink-3);
+}
+
+/* Invisible per-scenario hover target: the whole column, not just the bar, so
+ * a 2px bar is as easy to inspect as a 90px one. */
+.clm__hit {
+  fill: transparent;
+  pointer-events: all;
+}
+
+.clm__bar {
+  fill: var(--clm-up);
+  /* Bars grow out of the zero line on mount. `backwards` (never `forwards`)
+   * so no persistent transform is left on the element afterwards, and the
+   * hover state below never has to fight the entrance animation. */
+  transform-box: fill-box;
+  transform-origin: bottom center;
+  animation: clm-grow 380ms var(--clm-ease) backwards;
+  animation-delay: calc(var(--i, 0) * 45ms);
+  transition: fill var(--clm-fast) linear;
+}
+
+.clm__barg--down .clm__bar {
+  fill: var(--clm-down);
+  transform-origin: top center;
+}
+
+.clm__barg:hover .clm__bar {
+  fill: var(--clm-up-hi);
+}
+
+.clm__barg--down:hover .clm__bar {
+  fill: var(--clm-down-hi);
+}
+
+.clm__value {
+  font-family: var(--clm-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  fill: var(--clm-ink-2);
+  transition: fill var(--clm-fast) linear;
+}
+
+.clm__barg:hover .clm__value {
+  fill: var(--clm-ink);
+  font-weight: 700;
+}
+
+.clm__tick {
+  font-family: var(--clm-sans);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  fill: var(--clm-ink-2);
+  transition: fill var(--clm-fast) linear;
+}
+
+.clm__tick--2 {
+  font-family: var(--clm-mono);
+  font-size: 10.5px;
+  font-weight: 400;
+  letter-spacing: 0;
+  fill: var(--clm-ink-3);
+}
+
+.clm__barg:hover .clm__tick {
+  fill: var(--clm-signal);
+}
+
+.clm__caption {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 6px 0 0;
+  font-size: var(--clm-fs-micro);
+  line-height: 1.55;
+  color: var(--clm-ink-3);
+}
+
+.clm__caption .ico {
+  transform: translateY(2px);
+}
+
+.clm__coord {
+  font-family: var(--clm-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--clm-ink-2);
+}
+
+.clm__skip {
+  color: var(--clm-ink-2);
+}
+
+/* ------------------------------------------------------------------------ */
+/* Notes: no sub-layers, no value here, service down                         */
+/* ------------------------------------------------------------------------ */
+
+.clm__notetitle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: var(--clm-fs-body);
+  font-weight: 600;
+  color: var(--clm-ink-2);
+}
+
+.clm__note--error .clm__notetitle {
+  color: var(--clm-danger);
+}
+
+.clm__notebody {
+  margin: 6px 0 0;
+  max-width: 68ch;
+  font-size: var(--clm-fs-micro);
+  line-height: 1.6;
+  color: var(--clm-ink-3);
+}
+
+/* ------------------------------------------------------------------------ */
+/* Skeleton — bars on the same baseline the real strip draws                 */
+/* ------------------------------------------------------------------------ */
+
+.clm__loadingtext {
+  margin: 0 0 12px;
+  font-size: var(--clm-fs-micro);
+  color: var(--clm-ink-3);
+}
+
+.cskel {
+  position: relative;
+  overflow: hidden;
+  display: block;
+  background: var(--clm-raised-2);
+  border-radius: 3px;
+}
+
+.cskel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, var(--clm-veil), transparent);
+  transform: translateX(-100%);
+  animation: clm-sweep 1.1s var(--clm-ease) infinite;
+}
+
+.cskel--readout {
+  width: 168px;
+  height: 28px;
+  border-radius: 6px;
+}
+
+/* 30px bars, 38px apart, first one 57px in: exactly where chartGeometry()
+ * lands the real bars, so nothing jumps when the series arrives. */
+.clm__skelbars {
+  display: flex;
+  align-items: flex-end;
+  gap: 38px;
+  height: 152px;
+  margin-top: 24px;
+  padding-left: 57px;
+}
+
+.cskel--bar {
+  width: 30px;
+  flex: none;
+}
+
+.cskel--axis {
+  height: 1px;
+  margin: 0 14px 0 30px;
+  border-radius: 0;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Motion                                                                    */
+/* ------------------------------------------------------------------------ */
+
+@keyframes clm-rise {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes clm-grow {
+  from {
+    opacity: 0.4;
+    transform: scaleY(0);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+@keyframes clm-tick {
+  from {
+    opacity: 0.35;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes clm-sweep {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* ------------------------------------------------------------------------ */
+/* Narrow screens                                                            */
+/* ------------------------------------------------------------------------ */
+
+@media (max-width: 620px) {
+  .clm {
+    padding: 12px 12px 14px 16px;
+  }
+
+  .clm__title {
+    font-size: 16.5px;
+  }
+
+  .clm__head {
+    flex-wrap: wrap;
+  }
+
+  .clm__readout {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .clm__n {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clm,
+  .clm__rail,
+  .clm__retry,
+  .clm__peak,
+  .clm__bar,
+  .clm__value,
+  .clm__tick,
+  .cskel::after {
+    transition-duration: 1ms;
+    animation: none;
+  }
+}

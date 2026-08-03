@@ -18,6 +18,7 @@ import renderFilters, {
 } from "./filters";
 import renderMap from "./map";
 import renderDetail from "./detail";
+import renderCharts from "./charts";
 
 /** The four stable mount points declared in index.html, one per feature ticket. */
 export type MountId = "filters" | "map" | "detail" | "charts";
@@ -150,6 +151,7 @@ function boot(): void {
   registerMount("filters", renderFilters);
   registerMount("map", renderMap);
   registerMount("detail", renderDetail);
+  registerMount("charts", renderCharts);
   renderCatalogue(getState());
   onSelectionChange(highlightSelection);
   subscribe((state) => {
