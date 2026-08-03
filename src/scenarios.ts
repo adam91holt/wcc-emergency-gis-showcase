@@ -2,18 +2,29 @@
 //
 // Every surface in this app is deep-linkable (see src/router.ts), but an
 // empty hash is an empty map: 67 cards and nothing drawn. This module turns
-// the existing `layers=` / `theme=` / `dataset=` plumbing into a handful of
-// curated stories — one click and the harbour is ringed with inundation
-// extents, the faults are drawn and the detail panel is already open on the
-// dataset that anchors the story. The same click is a shareable link, which
-// is what the emergency-management audience actually passes around.
+// the existing `layers=` / `theme=` plumbing into a handful of curated
+// stories — one click and the harbour is ringed with inundation extents, the
+// faults are drawn. The same click is a shareable link, which is what the
+// emergency-management audience actually passes around.
+//
+// Deliberately does NOT write `dataset=`: that key is also what selects a
+// card in src/main.ts's list, and main.ts's highlightSelection() scrolls the
+// matching card into view on every selection change (including a
+// route-driven one, e.g. loading a deep link) — exactly wrong for a "quick
+// view" whose entire point is that the visitor stays put and watches the map
+// light up. `layers=`/`theme=` carry the whole story without that side
+// effect.
 //
 // Concept (carried from the discovery console in src/filters.ts): a rack of
 // pre-set briefings on a dispatcher's panel. Each briefing is an instrument,
-// not a pill — it reports, live, how much of its picture is currently lit on
-// the map (2 of 4 layers), so the rack doubles as a read on where the user
-// has wandered to by hand. Fully lit = the briefing is loaded and its chip is
-// pressed; partly lit = a real, visible in-between state.
+// not a pill — it reports how much of its picture is currently selected in
+// route state (2 of 4 layers), so the rack doubles as a read on where the
+// user has wandered to by hand. Fully selected = the briefing is loaded and
+// its chip is pressed; partly selected is a real, visible in-between state.
+// This is a route-state readout, not a render-status one: src/map.ts is the
+// source of truth for whether a layer actually drew (it tracks
+// loading/live/error per layer independently), so this module's copy always
+// says "selected", never "drawn"/"live"/"on the map".
 //
 // Split the same way every other feature module here is split:
 //   - pure scenario data + patch/match logic (no `document`, no `window`), so
@@ -56,9 +67,8 @@ export interface Scenario {
  * `mappableDatasets()` (queryable, vector, resolved Feature Layer) — the
  * raster/portal rows a reader might expect here (`storm-surge`,
  * `slope-over-25`, `sea-level-rise`) cannot be drawn, so they are deliberately
- * absent rather than silently dropped by the map at runtime. Each briefing's
- * `dataset` shares its `theme`, so the theme filter never hides the very card
- * the briefing just selected. */
+ * absent rather than silently dropped by the map at runtime. No briefing sets
+ * `dataset` — see the file header for why. */
 export const SCENARIOS: Scenario[] = [
   {
     id: "coastal",
@@ -68,7 +78,6 @@ export const SCENARIOS: Scenario[] = [
     patch: {
       layers: ["coastal-inundation-medium", "coastal-inundation-high", "coastal-erosion-index"],
       theme: "coastal_inundation",
-      dataset: "coastal-inundation-high",
     },
   },
   {
@@ -79,7 +88,6 @@ export const SCENARIOS: Scenario[] = [
     patch: {
       layers: ["active-faults", "liquefaction-overlay", "liquefaction-regional", "soil-classification-regional"],
       theme: "earthquake",
-      dataset: "active-faults",
     },
   },
   {
@@ -90,7 +98,6 @@ export const SCENARIOS: Scenario[] = [
     patch: {
       layers: ["stream-corridor", "overland-flowpath", "ponding-areas"],
       theme: "flood",
-      dataset: "overland-flowpath",
     },
   },
   {
@@ -101,7 +108,6 @@ export const SCENARIOS: Scenario[] = [
     patch: {
       layers: ["landslide-features", "landslide-process", "landslide-materials", "slope-failure"],
       theme: "landslide",
-      dataset: "landslide-features",
     },
   },
   {
@@ -112,7 +118,6 @@ export const SCENARIOS: Scenario[] = [
     patch: {
       layers: ["tsunami-evacuation-zones", "tsunami-zones-regional"],
       theme: "earthquake",
-      dataset: "tsunami-evacuation-zones",
     },
   },
   {
@@ -123,7 +128,6 @@ export const SCENARIOS: Scenario[] = [
     patch: {
       layers: ["roads", "footpaths", "parks-tracks", "transport-sensors"],
       theme: "other",
-      dataset: "roads",
     },
   },
 ];
@@ -162,24 +166,23 @@ export function scenarioLayersOn(scenario: Scenario, state: RouteState): number 
   return scenario.patch.layers.filter((id) => on.has(id)).length;
 }
 
-/** Is the app showing exactly this briefing? Every key the briefing owns must
- * match route state: scalars by equality, `layers` as a set (hash order is
- * not meaningful) with no extras. Deliberately exact rather than "contains":
- * `aria-pressed="true"` on a chip claims *this* is the picture on screen, and
- * clicking it clears exactly the keys it set — so a state carrying extra
- * layers reads as partial (the meter says so) rather than as loaded. */
+/** Is the app showing exactly this briefing's map picture? Gated on `layers`
+ * alone — a set match (hash order is not meaningful) with no extras — because
+ * `layers` is the only key this rack's own meter reports on (see
+ * `scenarioLayersOn`): the meter and `aria-pressed` read the same signal, so
+ * they can never disagree. `theme`/`dataset` are still written when a
+ * briefing loads and still cleared when it's toggled off (see
+ * `patchForScenario`), but they are *also* owned by the card list and filter
+ * panel — a card click or a theme-chip pick can legitimately repoint them
+ * without the map story that's actually drawn having changed. Gating "active"
+ * on them too would flip a fully-lit chip to unpressed the moment either
+ * panel touched its own key, even though every one of the briefing's layers
+ * is still on screen. */
 export function isScenarioActive(scenario: Scenario, state: RouteState): boolean {
-  for (const key of scenarioKeys(scenario)) {
-    if (key === "layers") {
-      const wanted = scenario.patch.layers;
-      const have = state.layers ?? [];
-      if (new Set(have).size !== new Set(wanted).size) return false;
-      if (scenarioLayersOn(scenario, state) !== new Set(wanted).size) return false;
-    } else if (state[key] !== scenario.patch[key]) {
-      return false;
-    }
-  }
-  return true;
+  const wanted = scenario.patch.layers;
+  const have = state.layers ?? [];
+  if (new Set(have).size !== new Set(wanted).size) return false;
+  return scenarioLayersOn(scenario, state) === new Set(wanted).size;
 }
 
 /** The router patch one click on this briefing should write. Toggle
@@ -206,13 +209,20 @@ export function applyScenario(scenario: Scenario, state: RouteState = getState()
   setState(patchForScenario(scenario, state));
 }
 
-/** The rack's own status line: what is loaded and how much of it is drawn. */
+/** The rack's own status line: what is loaded and how many layers are
+ * selected. Deliberately says "selected", never "drawn"/"live"/"on the map":
+ * this module only knows what route state asks for (via `drawableLayerIds`,
+ * a mappable-catalogue-membership check), not whether the map actually
+ * rendered it — src/map.ts tracks real loading/live/error status per layer
+ * and can legitimately report 0 drawn while every layer here reads selected
+ * (a slow or failing ArcGIS service). Claiming "drawn" here would contradict
+ * the map and mislead the screen-reader users this announcement is for. */
 export function announcement(state: RouteState, list: Scenario[] = SCENARIOS): string {
-  const drawn = drawableLayerIds(state).length;
+  const selected = drawableLayerIds(state).length;
   const active = list.find((s) => isScenarioActive(s, state));
-  const layers = `${drawn} ${drawn === 1 ? "layer" : "layers"} on the map`;
+  const layers = `${selected} ${selected === 1 ? "layer" : "layers"} selected`;
   if (active) return `${active.title} briefing loaded — ${layers}.`;
-  return drawn > 0 ? `No briefing loaded — ${layers}.` : "No briefing loaded — the map is clear.";
+  return selected > 0 ? `No briefing loaded — ${layers}.` : "No briefing loaded — the map is clear.";
 }
 
 // ---------------------------------------------------------------------------
@@ -326,7 +336,7 @@ function buildRack(root: HTMLElement): Rack {
         </div>
         <p class="playbook__readout" aria-hidden="true">
           <span class="playbook__drawn">0</span>
-          <span class="playbook__unit">layers live</span>
+          <span class="playbook__unit">layers selected</span>
         </p>
       </div>
       <div class="playbook__rack">${SCENARIOS.map(chipMarkup).join("")}</div>
@@ -368,7 +378,7 @@ function armGlyph(glyph: HTMLElement): void {
 }
 
 /** Paint route state onto the rack: pressed state, per-briefing meter fill,
- * the panel's live layer count and one polite announcement. */
+ * the panel's selected-layer count and one polite announcement. */
 function syncRack(state: RouteState): void {
   if (!rack) return;
   let loaded = false;

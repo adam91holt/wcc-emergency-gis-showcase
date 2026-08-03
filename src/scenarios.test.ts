@@ -47,13 +47,13 @@ describe("SCENARIOS data", () => {
     }
   });
 
-  it("selects a real dataset whose theme survives the briefing's own theme filter", () => {
-    for (const s of SCENARIOS) {
-      if (!s.patch.dataset) continue;
-      const d = findById(s.patch.dataset);
-      expect(d, `${s.id}: unknown dataset ${s.patch.dataset}`).toBeDefined();
-      if (s.patch.theme) expect(d!.theme).toBe(s.patch.theme);
-    }
+  it("never sets a dataset, so loading a briefing can't trigger the catalogue list's scroll-into-view", () => {
+    // src/main.ts's highlightSelection() scrolls the matching card into view
+    // on every `dataset` change, including a route-driven one (a scenario
+    // load, or pasting a deep link) — exactly wrong for a quick view whose
+    // point is that the visitor stays put and watches the map. See the file
+    // header for the full rationale.
+    for (const s of SCENARIOS) expect(s.patch.dataset).toBeUndefined();
   });
 
   it("only writes route keys the map story owns", () => {
@@ -111,13 +111,15 @@ describe("isScenarioActive", () => {
     ).toBe(false);
   });
 
-  it("is false when a non-layer key the briefing owns differs", () => {
+  it("stays true when the theme facet is changed elsewhere — only the layer set gates \"loaded\"", () => {
+    // theme is also owned by the filter panel's theme chips (src/filters.ts).
+    // A briefing's chip reports pressed/loaded off the same signal as its own
+    // meter (the layer set) so the two can never disagree — see this
+    // function's doc. A later theme-chip pick must not make an
+    // otherwise-still-fully-lit briefing's chip read unpressed.
     for (const s of SCENARIOS) {
-      if (s.patch.theme) expect(isScenarioActive(s, { ...loadedState(s), theme: "climate" })).toBe(false);
-      if (s.patch.dataset) {
-        const other = s.patch.dataset === "roads" ? "footpaths" : "roads";
-        expect(isScenarioActive(s, { ...loadedState(s), dataset: other })).toBe(false);
-      }
+      if (!s.patch.theme) continue;
+      expect(isScenarioActive(s, { ...loadedState(s), theme: "climate" })).toBe(true);
     }
   });
 
@@ -213,7 +215,7 @@ describe("drawableLayerIds", () => {
 });
 
 describe("announcement", () => {
-  it("names the loaded briefing and how much is drawn", () => {
+  it("names the loaded briefing and how many layers are selected", () => {
     const s = SCENARIOS[2];
     const text = announcement(loadedState(s));
     expect(text).toContain(s.title);
@@ -224,7 +226,10 @@ describe("announcement", () => {
     expect(announcement({})).toBe("No briefing loaded — the map is clear.");
   });
 
-  it("reports hand-toggled layers with no briefing loaded", () => {
-    expect(announcement({ layers: ["roads"] })).toBe("No briefing loaded — 1 layer on the map.");
+  it("reports hand-toggled layers with no briefing loaded, without claiming they're drawn", () => {
+    // The map (src/map.ts) is the only source of truth for render success —
+    // this module only knows what's selected in route state, so its copy
+    // must say "selected", never "drawn"/"live"/"on the map".
+    expect(announcement({ layers: ["roads"] })).toBe("No briefing loaded — 1 layer selected.");
   });
 });

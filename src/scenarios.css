@@ -255,7 +255,11 @@
   font-size: var(--scn-fs-desc);
   font-weight: 400;
   line-height: 1.45;
-  color: var(--scn-ink-3);
+  /* --scn-ink-3 is ~3.5–3.8:1 against --scn-raised in both schemes — under
+   * the 4.5:1 WCAG AA floor for normal-size text, and this is the one line of
+   * real reading copy in the card (not a label/unit). --scn-ink-2 clears
+   * 6.6:1+ in both schemes. */
+  color: var(--scn-ink-2);
 }
 
 .scen__foot {
