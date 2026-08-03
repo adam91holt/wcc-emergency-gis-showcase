@@ -130,7 +130,11 @@ button {
  * hero read-out. Until the module that owns a figure has evaluated, the
  * element is genuinely empty — and an empty `.figure` renders a
  * figure-shaped placeholder, never a dash, a zero or a blank. Sibling
- * tickets: mark any script-written number `.figure` and this comes free. */
+ * tickets: mark any script-written number `.figure` and this comes free.
+ * The pulse plays once on mount, not on a loop: the masthead sweep is the
+ * product's only ambient signal, so an empty figure gets a single "still
+ * loading" beat and then settles to a static block rather than competing
+ * with it for attention. */
 .figure:empty::before {
   content: "";
   display: inline-block;
@@ -139,8 +143,7 @@ button {
   vertical-align: baseline;
   background: var(--skeleton-base);
   border-radius: var(--radius-sm);
-  animation: skeleton-pulse var(--duration-shimmer) var(--ease-standard)
-    infinite;
+  animation: skeleton-pulse var(--duration-shimmer) var(--ease-standard) 1;
 }
 
 /* ---- One focus ring, defined once, inherited by every focusable element
@@ -222,6 +225,15 @@ button {
 
 .prose {
   max-inline-size: var(--prose-width);
+  color: var(--text-secondary);
+}
+
+/* The one-line orientation that sits under an eyebrow — on the keys panel and
+ * on the briefing's summary row alike, so it is named for the role it plays
+ * rather than for the block that first used it. */
+.panel-hint {
+  max-inline-size: var(--prose-width);
+  font-size: var(--text-sm);
   color: var(--text-secondary);
 }
 
@@ -408,7 +420,11 @@ html[data-theme="dark"] .theme-toggle__icon--moon {
  * does not jump when real content lands. Never a spinner, never a blank
  * flash, never a "Loading…" string. Sibling tickets: compose .skeleton
  * blocks into the silhouette of your panel. The sheen is a translateX on a
- * pseudo-element, so it stays on the compositor. */
+ * pseudo-element, so it stays on the compositor. It sweeps once on mount and
+ * then holds still: the masthead rule is the only looping signal the board
+ * allows, so a skeleton that keeps shimmering indefinitely (main.ts can take
+ * a while on a slow connection) would read as a second, competing "still
+ * working" cue instead of a calm placeholder. */
 .skeleton {
   display: block;
   position: relative;
@@ -429,8 +445,7 @@ html[data-theme="dark"] .theme-toggle__icon--moon {
     transparent
   );
   transform: translateX(-100%);
-  animation: skeleton-sweep var(--duration-shimmer) var(--ease-standard)
-    infinite;
+  animation: skeleton-sweep var(--duration-shimmer) var(--ease-standard) 1;
 }
 
 .skeleton--text {
@@ -446,12 +461,16 @@ html[data-theme="dark"] .theme-toggle__icon--moon {
  * when main.ts swaps the real catalogue in. Deliberately gap-less: .ds itself
  * has no gap either — its rhythm comes from .meta's own margins, which
  * .skeleton-card__meta mirrors below. A gap here would make the placeholder
- * taller than the card it stands in for. */
+ * taller than the card it stands in for.
+ * padding is left as the plain, uniform var(--space-4) that .ds itself uses —
+ * .ds's own inline-start inset is that padding plus its border-inline-start
+ * (--edge-width), and this rule already carries the same border-inline-start
+ * below, so adding --edge-width into the padding too would double-count it
+ * and sit the skeleton's content --edge-width further in than the real card. */
 .skeleton-card {
   display: flex;
   flex-direction: column;
   padding: var(--space-4);
-  padding-inline-start: calc(var(--space-4) + var(--edge-width));
   background: var(--surface-2);
   border: var(--border-width) solid var(--border);
   border-inline-start: var(--edge-width) solid var(--scope-color, var(--border-strong));
@@ -471,30 +490,30 @@ html[data-theme="dark"] .theme-toggle__icon--moon {
   border-bottom: var(--border-width) solid var(--border);
 }
 
+/* Sized from the heading's own type scale — `ch` at `--text-lg` is roughly the
+ * measure of a real theme label ("Climate Data"), so the placeholder stays the
+ * right size at every viewport width instead of stretching with the column. */
 .skeleton--heading {
-  height: var(--text-lg);
+  font-size: var(--text-lg);
+  inline-size: 12ch;
+  height: 1em;
 }
 
+/* Sized in `ch` rather than a fixed length: the real pill holds a two- or
+ * three-digit count, so the placeholder tracks the type scale instead of
+ * pinning a magic width. */
 .skeleton--pill {
-  inline-size: 2.5rem;
+  inline-size: 5ch;
   height: 1.2em;
   border-radius: var(--radius-full);
 }
 
-/* Mirrors .ds__channel: a dot-plus-text row sitting where the real
- * channel marker and scope/authority/year line will land. */
+/* Mirrors .ds .meta: the scope/authority/year line beneath the card title. */
 .skeleton-card__meta {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   margin-block: var(--space-2) var(--space-3);
-}
-
-.skeleton--dot {
-  flex: none;
-  width: var(--dot-size);
-  height: var(--dot-size);
-  border-radius: var(--radius-full);
 }
 
 /* Mirrors .ds a: the source link sits at the card's own bottom edge. */
@@ -749,13 +768,45 @@ main > * + * {
   margin-top: var(--space-6);
 }
 
-/* ---- Hero: the briefing & legend disclosure ---------------------------
+/* ---- Hero keys: the colour legend, always visible on first paint --------
+ * The scope stripe on each card and the hazard-channel read-out are the
+ * board's core visual grammar, so the panel that decodes them is plain, not
+ * a disclosure — a new reader needs it the instant the card grid appears.
+ * Kept dense (a ruled chip grid, not prose) so it earns its place above the
+ * fold without becoming a landing-page-sized hero. Gets the same entrance
+ * rise as the rest of the shell. */
+.hero-keys {
+  animation: rise var(--duration-slow) var(--ease-out) both;
+}
+
+.hero-keys__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+}
+
+/* The two key groups — the hazard-channel read-out and the tier key. Stacked
+ * by default, side by side from 64rem (see the responsive block). */
+.hero-keys__groups {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.hero-keys__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* ---- Hero: the extended-explanation disclosure -------------------------
  * A `<details>`, closed on first paint. The masthead already carries the
- * title, one-line orientation, search and the live ledger, so the searchable
- * catalogue (#app) is the first thing in view below the masthead at any
- * width — this used to be a landing-page-sized panel sitting in front of it.
- * The summary row is always visible and still gets the entrance rise, so
- * first paint reads as considered rather than as an empty gap. */
+ * title and one-line orientation, and .hero-keys above already teaches the
+ * colour grammar, so the searchable catalogue (#app) stays close to the top
+ * of the page at any width — this used to be a landing-page-sized panel
+ * sitting in front of it. The summary row is always visible and still gets
+ * the entrance rise, so first paint reads as considered rather than as an
+ * empty gap. */
 .hero {
   padding: 0;
   overflow: hidden;
@@ -805,10 +856,6 @@ main > * + * {
   min-width: 0;
 }
 
-.hero__summary-hint {
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-}
 
 /* The chevron is the only cue (besides the content itself) that this is a
  * disclosure — it flips with the same spring the theme toggle uses, so
@@ -852,17 +899,6 @@ main > * + * {
   font-size: var(--text-sm);
   line-height: var(--leading-normal);
   color: var(--text-secondary);
-}
-
-.hero__keys {
-  display: grid;
-  gap: var(--space-5);
-}
-
-.hero__key-group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
 }
 
 /* ---- Hazard channel index -------------------------------------------
@@ -1107,28 +1143,6 @@ main > * + * {
   overflow-wrap: anywhere;
 }
 
-/* The card's own hazard-channel marker — a coloured dot plus its label, set
- * via the per-dataset `--channel-color` main.ts writes inline (one of seven
- * fixed hues, so an attribute-selector table isn't needed the way scope's
- * three values get one below). This is the fix for the channel system being
- * "ornamental": every card now carries its channel, not just the tier stripe,
- * so scanning the catalogue for (e.g.) flood data works without a legend. */
-.ds__channel {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  color: var(--channel-color, var(--text-tertiary));
-  font-weight: var(--weight-medium);
-}
-
-.ds__channel-dot {
-  flex: none;
-  width: var(--dot-size);
-  height: var(--dot-size);
-  border-radius: var(--radius-full);
-  background: var(--channel-color, var(--accent));
-}
-
 /* The card's one action. Uses the shell's external-link glyph from the single
  * icon sprite — the same mark the footer's source links carry — rather than a
  * second arrow character. */
@@ -1334,6 +1348,10 @@ main > * + * {
     padding-inline: max(var(--space-6), env(safe-area-inset-left));
   }
 
+  .hero-keys__body {
+    padding: var(--space-6);
+  }
+
   .hero__summary {
     padding: var(--space-5) var(--space-6);
   }
@@ -1347,12 +1365,14 @@ main > * + * {
   }
 }
 
-/* Wide enough to run the briefing copy and the colour keys side by side. */
+/* Wide enough to run the two key groups side by side. Below this the channel
+ * read-out and the tier key stack, which keeps both at a readable width; above
+ * it the panel would otherwise leave the tier key alone on a very wide row. */
 @media (min-width: 64rem) {
-  .hero__content {
-    grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  .hero-keys__groups {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
     align-items: start;
-    gap: var(--space-7);
+    gap: var(--space-6);
   }
 }
 

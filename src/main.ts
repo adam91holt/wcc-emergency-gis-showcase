@@ -59,28 +59,10 @@ function renderAllMounts(state: RouteState): void {
 }
 
 function card(d: Dataset): string {
-  const link = d.url
-    ? `<a href="${d.url}" target="_blank" rel="noreferrer">source
-        <svg class="icon icon--sm" aria-hidden="true" focusable="false"><use href="#icon-external" /></svg></a>`
-    : "";
-  // Every dataset carries a hazard channel, not only the ones the catalogue
-  // happened to tag. The ~11 national-scope rows have theme === null, and
-  // they fall back to "other" — the same channel the catalogue's own
-  // "other" theme already uses, so there is no fourth bucket to explain and
-  // no card is left without the marker the review asked every card to carry.
-  // data-channel is the token-backed hook (paired with data-scope, which
-  // stays a separate cue for the tier stripe); --channel-color drives the
-  // dot inline since seven fixed hues don't need an attribute-selector table
-  // the way scope's three values get in style.css.
-  const channel = d.theme || "other";
-  const channelLabel = d.theme_label || "Other";
-  return `<article class="ds" data-scope="${d.scope}" data-channel="${channel}">
+  const link = d.url ? `<a href="${d.url}" target="_blank" rel="noreferrer">source ↗</a>` : "";
+  return `<article class="ds" data-scope="${d.scope}">
     <h3>${label(d)}</h3>
-    <p class="meta">
-      <span class="ds__channel" style="--channel-color: var(--hazard-${channel})">
-        <span class="ds__channel-dot" aria-hidden="true"></span>${channelLabel}
-      </span><span aria-hidden="true"> · </span>${d.scope} · ${d.authority ?? "—"}${d.year ? ` · ${d.year}` : ""}
-    </p>
+    <p class="meta">${d.scope} · ${d.authority ?? "—"}${d.year ? ` · ${d.year}` : ""}</p>
     ${link}
   </article>`;
 }

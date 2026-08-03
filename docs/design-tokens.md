@@ -140,13 +140,14 @@ inventing an eighth hue — the masthead's "Channels" figure (derived from
 and `--hazard-other` is what keeps an unthemed row visually consistent with
 them instead of falling through to an undefined custom property.
 
-**Where the channel hues already paint.** Two places in the shell, so the
-colour code is taught and used rather than merely declared: the dot on every
-card's meta line (`.ds__channel`, coloured from the inline `--channel-color`
-`main.ts` writes), and the briefing's channel read-out (`.channel-index`),
-whose counts and bar lengths come from `themes()` at runtime. When your feature
-paints with `--hazard-*` — a map layer list, a filter chip, a chart series —
-reuse the same hue for the same theme and it will already agree with the shell.
+**Where the channel hues already paint.** One place in the shell so far, so
+the colour code is taught and used rather than merely declared: the briefing's
+channel read-out (`.channel-index`), whose counts and bar lengths come from
+`themes()` at runtime. (A per-card channel marker is a natural next step, but
+it belongs to `main.ts`'s `card()` renderer, which is out of scope for this
+ticket — see the map/filters/charts tickets.) When your feature paints with
+`--hazard-*` — a map layer list, a filter chip, a chart series — reuse the
+same hue for the same theme and it will already agree with the shell.
 
 `--hazard-coastal_inundation`, `--hazard-flood`, `--hazard-landslide`,
 `--hazard-earthquake`, `--hazard-sea_level_rise`, `--hazard-climate`,
@@ -248,7 +249,7 @@ rules, the masthead sweep track), `--edge-width` 3px (the scope stripe).
 | `--tap-min` | 2.75rem (44px) | Minimum interactive target (WCAG 2.5.5) |
 | `--icon-size` / `--icon-size-sm` | 20 / 16px | Icon box |
 | `--brand-mark` | 40px | The masthead mark |
-| `--dot-size` | 8px | Badge dots, the card's channel dot |
+| `--dot-size` | 8px | Badge dots |
 | `--bar-height` | 4px | The channel read-out's data bar |
 
 `--content-width` widens to 84rem past a 100rem viewport (set in `theme.css`).
@@ -322,13 +323,14 @@ you do not need your own media query.
 | `.panel` | Panel surface + hairline + radius + soft shadow |
 | `.eyebrow` | Uppercase micro-label with a hairline running to the edge |
 | `.prose` | Capped measure + secondary text colour |
+| `.panel-hint` | The one-line orientation that sits under an `.eyebrow` on a panel |
 | `.badge` / `.badge__dot` | Pill label; set `--dot-color` for the dot |
 | `.button` | Accent action; `.button--ghost` quiet; `.button--icon` square |
 | `.icon` / `.icon--sm` | Icon box, sized from tokens |
 | `.visually-hidden` | Screen-reader-only text |
 | `.num` | Mono + tabular figures |
 | `.figure` | Mono + tabular figures **and** the empty-state skeleton, for script-written numbers |
-| `.skeleton`, `.skeleton--text`, `.skeleton--title`, `.skeleton--heading`, `.skeleton--pill`, `.skeleton--dot`, `.skeleton--link`, `.skeleton-card` | The loading convention |
+| `.skeleton`, `.skeleton--text`, `.skeleton--title`, `.skeleton--heading`, `.skeleton--pill`, `.skeleton--link`, `.skeleton-card` | The loading convention |
 
 ### Icons
 
@@ -355,7 +357,7 @@ every tier count carries `.figure` and holds a placeholder until its writer
 (`main.ts` for `#total`; the small boot module in `index.html`, reading
 `src/catalogue.ts`, for the rest) fills it in, and `#app` holds a skeleton
 section — heading, count pill and a four-card grid whose cards carry a title,
-channel-dot meta row and link line — that `main.ts` replaces wholesale on its
+meta row and link line — that `main.ts` replaces wholesale on its
 first render.
 
 ### Mount points

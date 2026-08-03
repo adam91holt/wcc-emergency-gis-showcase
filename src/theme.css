@@ -164,7 +164,7 @@
   --hazard-flood: #5aa9ff;
   --hazard-landslide: #d98b4a;
   --hazard-earthquake: #ff7a6b;
-  --hazard-sea_level_rise: #4fd1c5;
+  --hazard-sea_level_rise: #e56cbd;
   --hazard-climate: #b58cff;
   --hazard-other: #8fa0b3;
 
@@ -255,8 +255,8 @@
     --hazard-coastal_inundation: #0f6f63;
     --hazard-flood: #1c5fb5;
     --hazard-landslide: #8a4d12;
-    --hazard-earthquake: #b02f24;
-    --hazard-sea_level_rise: #0d6e78;
+    --hazard-earthquake: #ad401f;
+    --hazard-sea_level_rise: #86275f;
     --hazard-climate: #6b3fc4;
     --hazard-other: #4f5b6b;
 
@@ -303,8 +303,8 @@ html[data-theme="light"] {
   --hazard-coastal_inundation: #0f6f63;
   --hazard-flood: #1c5fb5;
   --hazard-landslide: #8a4d12;
-  --hazard-earthquake: #b02f24;
-  --hazard-sea_level_rise: #0d6e78;
+  --hazard-earthquake: #ad401f;
+  --hazard-sea_level_rise: #86275f;
   --hazard-climate: #6b3fc4;
   --hazard-other: #4f5b6b;
 
@@ -349,7 +349,7 @@ html[data-theme="dark"] {
   --hazard-flood: #5aa9ff;
   --hazard-landslide: #d98b4a;
   --hazard-earthquake: #ff7a6b;
-  --hazard-sea_level_rise: #4fd1c5;
+  --hazard-sea_level_rise: #e56cbd;
   --hazard-climate: #b58cff;
   --hazard-other: #8fa0b3;
 

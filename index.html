@@ -202,17 +202,112 @@
     </header>
 
     <main>
-      <!-- The briefing is a disclosure, closed on first paint: the masthead
-           above already carries the title, one-line orientation, search and
-           the live ledger, so the searchable catalogue below (#app) is the
-           first thing in view at any width instead of sitting under a
-           landing-page-sized hero. Nothing here is lost — it's one tap away —
-           and the summary row still gives first paint a considered feel. -->
+      <!-- The colour key is the board's core visual grammar — the scope
+           stripe on every card and the hazard channel hues used throughout
+           the board — so it renders open on first paint instead of behind a
+           disclosure: a new reader needs it the moment the card grid
+           appears, not one tap later. It stays a dense, ruled chip grid (not
+           prose), so it earns its place above the fold without reintroducing
+           a landing-page-sized hero. -->
+      <section class="hero-keys panel" aria-labelledby="hero-keys-title">
+        <div class="hero-keys__body">
+          <p class="eyebrow" id="hero-keys-title">Reading the board</p>
+          <p class="panel-hint">
+            How the tier stripe on each card reads, and what each hazard channel colour means
+          </p>
+
+          <div class="hero-keys__groups">
+            <!-- Not a legend: a read-out. Every figure and every bar length below
+                 is written by the boot module at the foot of this file from the
+                 bundled catalogue (themes() / scopes()), so this block states the
+                 real shape of the data — which channel dominates, how thin the
+                 climate series are — while also teaching the colour system the
+                 map, filters and charts tickets consume. The channel rows are in
+                 the catalogue's own first-seen theme order; bar length is the
+                 channel's share of the largest channel. -->
+            <div class="hero-keys__group">
+              <p class="eyebrow" id="channel-key-label">Datasets per hazard channel</p>
+              <ul class="channel-index" aria-labelledby="channel-key-label">
+                <li class="channel" style="--channel-color: var(--hazard-coastal_inundation)">
+                  <span class="channel__name">Coastal Inundation</span>
+                  <span class="channel__count figure" data-channel-count="coastal_inundation"></span>
+                  <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
+                </li>
+                <li class="channel" style="--channel-color: var(--hazard-flood)">
+                  <span class="channel__name">Flood Data</span>
+                  <span class="channel__count figure" data-channel-count="flood"></span>
+                  <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
+                </li>
+                <li class="channel" style="--channel-color: var(--hazard-landslide)">
+                  <span class="channel__name">Landslides</span>
+                  <span class="channel__count figure" data-channel-count="landslide"></span>
+                  <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
+                </li>
+                <li class="channel" style="--channel-color: var(--hazard-earthquake)">
+                  <span class="channel__name">Earthquake Hazard</span>
+                  <span class="channel__count figure" data-channel-count="earthquake"></span>
+                  <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
+                </li>
+                <li class="channel" style="--channel-color: var(--hazard-sea_level_rise)">
+                  <span class="channel__name">Sea Level Rise</span>
+                  <span class="channel__count figure" data-channel-count="sea_level_rise"></span>
+                  <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
+                </li>
+                <li class="channel" style="--channel-color: var(--hazard-climate)">
+                  <span class="channel__name">Climate Data</span>
+                  <span class="channel__count figure" data-channel-count="climate"></span>
+                  <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
+                </li>
+                <li class="channel" style="--channel-color: var(--hazard-other)">
+                  <span class="channel__name">Other Useful Data</span>
+                  <span class="channel__count figure" data-channel-count="other"></span>
+                  <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
+                </li>
+              </ul>
+              <p class="channel-note">
+                <span class="figure" id="untyped-total"></span> national layers carry no hazard
+                theme of their own: they group under <em>Uncategorised</em> in the catalogue
+                below and ride the neutral Other channel.
+              </p>
+            </div>
+
+            <div class="hero-keys__group">
+              <p class="eyebrow" id="scope-key-label">Publishing tier — the stripe on each card</p>
+              <ul class="scope-key" aria-labelledby="scope-key-label">
+                <li class="scope-key__item" style="--scope-color: var(--scope-wcc)">
+                  <span class="scope-key__swatch" aria-hidden="true"></span>
+                  <span class="scope-key__count figure" data-scope-count="wcc"></span>
+                  City — Wellington City Council
+                </li>
+                <li class="scope-key__item" style="--scope-color: var(--scope-regional)">
+                  <span class="scope-key__swatch" aria-hidden="true"></span>
+                  <span class="scope-key__count figure" data-scope-count="regional"></span>
+                  Regional — Greater Wellington
+                </li>
+                <li class="scope-key__item" style="--scope-color: var(--scope-national)">
+                  <span class="scope-key__swatch" aria-hidden="true"></span>
+                  <span class="scope-key__count figure" data-scope-count="national"></span>
+                  National — GNS &amp; agencies
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- The longer explanation — who publishes the data and how the
+           catalogue is structured — stays a disclosure, closed on first
+           paint: the masthead already carries the title and one-line
+           orientation, and the key above already teaches the colour grammar,
+           so the searchable catalogue below (#app) stays close to the top of
+           the page instead of sitting under a landing-page-sized hero.
+           Nothing here is lost — it's one tap away — and the summary row
+           still gives first paint a considered feel. -->
       <details class="hero panel">
         <summary class="hero__summary">
           <span class="hero__summary-text">
-            <span class="eyebrow">Briefing &amp; legend</span>
-            <span class="hero__summary-hint">How the tier stripe and hazard-channel dot on each card read</span>
+            <span class="eyebrow">About this board</span>
+            <span class="panel-hint">Who publishes the data and how the catalogue is structured</span>
           </span>
           <svg class="icon hero__chevron" aria-hidden="true" focusable="false">
             <use href="#icon-chevron" />
@@ -220,97 +315,20 @@
         </summary>
 
         <div class="hero__content">
-        <div class="hero__lead">
-          <h2 id="hero-title" class="hero__title">
-            Hazard data for Wellington is published by three agencies, in seven themes,
-            across <em>67 separate services</em>.
-          </h2>
-          <p class="hero__body">
-            This board pulls all of them into one index. Each entry is a live reference into a
-            public ArcGIS service — hazard extents, exposure models and climate time series
-            maintained by council and national science agencies. Colour carries the meaning:
-            a card's leading edge names the tier that publishes it, and each hazard theme owns
-            a channel hue — on the dot beside every card's theme, in the read-out below, and in
-            the map, filters and charts as they land.
-          </p>
-        </div>
-
-        <div class="hero__keys">
-          <!-- Not a legend: a read-out. Every figure and every bar length below
-               is written by the boot module at the foot of this file from the
-               bundled catalogue (themes() / scopes()), so this block states the
-               real shape of the data — which channel dominates, how thin the
-               climate series are — while also teaching the colour system the
-               map, filters and charts tickets consume. The channel rows are in
-               the catalogue's own first-seen theme order; bar length is the
-               channel's share of the largest channel. -->
-          <div class="hero__key-group">
-            <p class="eyebrow" id="channel-key-label">Datasets per hazard channel</p>
-            <ul class="channel-index" aria-labelledby="channel-key-label">
-              <li class="channel" style="--channel-color: var(--hazard-coastal_inundation)">
-                <span class="channel__name">Coastal Inundation</span>
-                <span class="channel__count figure" data-channel-count="coastal_inundation"></span>
-                <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
-              </li>
-              <li class="channel" style="--channel-color: var(--hazard-flood)">
-                <span class="channel__name">Flood Data</span>
-                <span class="channel__count figure" data-channel-count="flood"></span>
-                <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
-              </li>
-              <li class="channel" style="--channel-color: var(--hazard-landslide)">
-                <span class="channel__name">Landslides</span>
-                <span class="channel__count figure" data-channel-count="landslide"></span>
-                <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
-              </li>
-              <li class="channel" style="--channel-color: var(--hazard-earthquake)">
-                <span class="channel__name">Earthquake Hazard</span>
-                <span class="channel__count figure" data-channel-count="earthquake"></span>
-                <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
-              </li>
-              <li class="channel" style="--channel-color: var(--hazard-sea_level_rise)">
-                <span class="channel__name">Sea Level Rise</span>
-                <span class="channel__count figure" data-channel-count="sea_level_rise"></span>
-                <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
-              </li>
-              <li class="channel" style="--channel-color: var(--hazard-climate)">
-                <span class="channel__name">Climate Data</span>
-                <span class="channel__count figure" data-channel-count="climate"></span>
-                <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
-              </li>
-              <li class="channel" style="--channel-color: var(--hazard-other)">
-                <span class="channel__name">Other Useful Data</span>
-                <span class="channel__count figure" data-channel-count="other"></span>
-                <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
-              </li>
-            </ul>
-            <p class="channel-note">
-              <span class="figure" id="untyped-total"></span> national layers carry no hazard
-              theme of their own: they group under <em>Uncategorised</em> in the catalogue
-              below and ride the neutral Other channel.
+          <div class="hero__lead">
+            <h2 id="hero-title" class="hero__title">
+              Hazard data for Wellington is published by three agencies, in seven themes,
+              across <em>67 separate services</em>.
+            </h2>
+            <p class="hero__body">
+              This board pulls all of them into one index. Each entry is a live reference into a
+              public ArcGIS service — hazard extents, exposure models and climate time series
+              maintained by council and national science agencies. Colour carries the meaning:
+              a card's leading edge names the tier that publishes it, and each hazard theme owns
+              a channel hue — carried in the read-out above, and in the map, filters and charts
+              as they land.
             </p>
           </div>
-
-          <div class="hero__key-group">
-            <p class="eyebrow" id="scope-key-label">Publishing tier — the stripe on each card</p>
-            <ul class="scope-key" aria-labelledby="scope-key-label">
-              <li class="scope-key__item" style="--scope-color: var(--scope-wcc)">
-                <span class="scope-key__swatch" aria-hidden="true"></span>
-                <span class="scope-key__count figure" data-scope-count="wcc"></span>
-                City — Wellington City Council
-              </li>
-              <li class="scope-key__item" style="--scope-color: var(--scope-regional)">
-                <span class="scope-key__swatch" aria-hidden="true"></span>
-                <span class="scope-key__count figure" data-scope-count="regional"></span>
-                Regional — Greater Wellington
-              </li>
-              <li class="scope-key__item" style="--scope-color: var(--scope-national)">
-                <span class="scope-key__swatch" aria-hidden="true"></span>
-                <span class="scope-key__count figure" data-scope-count="national"></span>
-                National — GNS &amp; agencies
-              </li>
-            </ul>
-          </div>
-        </div>
         </div>
       </details>
 
@@ -328,14 +346,13 @@
       <div id="app">
         <div class="skeleton-section" aria-hidden="true">
           <div class="skeleton-section__head">
-            <span class="skeleton skeleton--heading" style="inline-size: 11rem"></span>
+            <span class="skeleton skeleton--heading"></span>
             <span class="skeleton skeleton--pill"></span>
           </div>
           <div class="grid">
             <div class="skeleton-card" data-scope="wcc">
               <span class="skeleton skeleton--title" style="inline-size: 78%"></span>
               <span class="skeleton-card__meta">
-                <span class="skeleton skeleton--dot"></span>
                 <span class="skeleton skeleton--text" style="inline-size: 40%"></span>
               </span>
               <span class="skeleton skeleton--text skeleton--link" style="inline-size: 26%"></span>
@@ -343,7 +360,6 @@
             <div class="skeleton-card" data-scope="regional">
               <span class="skeleton skeleton--title" style="inline-size: 64%"></span>
               <span class="skeleton-card__meta">
-                <span class="skeleton skeleton--dot"></span>
                 <span class="skeleton skeleton--text" style="inline-size: 52%"></span>
               </span>
               <span class="skeleton skeleton--text skeleton--link" style="inline-size: 30%"></span>
@@ -351,14 +367,12 @@
             <div class="skeleton-card" data-scope="national">
               <span class="skeleton skeleton--title" style="inline-size: 86%"></span>
               <span class="skeleton-card__meta">
-                <span class="skeleton skeleton--dot"></span>
                 <span class="skeleton skeleton--text" style="inline-size: 36%"></span>
               </span>
             </div>
             <div class="skeleton-card" data-scope="wcc">
               <span class="skeleton skeleton--title" style="inline-size: 70%"></span>
               <span class="skeleton-card__meta">
-                <span class="skeleton skeleton--dot"></span>
                 <span class="skeleton skeleton--text" style="inline-size: 46%"></span>
               </span>
               <span class="skeleton skeleton--text skeleton--link" style="inline-size: 28%"></span>
@@ -437,13 +451,26 @@
       // share of that, which is what makes the row lengths comparable.
       const busiest = Math.max(...channels.map((c) => c.count));
       let themed = 0;
+      const rows = [];
 
       for (const { theme, count } of channels) {
         themed += count;
         setFigure(`[data-channel-count="${theme}"]`, count);
         const row = document.querySelector(`[data-channel-count="${theme}"]`)?.closest(".channel");
-        row?.style.setProperty("--share", String(count / busiest));
+        if (row) rows.push([row, count / busiest]);
       }
+
+      // The bars grow from scaleX(0) to their real share. The share is set a
+      // frame after the browser has painted the tracks at zero, because a
+      // transition needs a rendered "before" state to interpolate from —
+      // setting it in the same tick as first paint would snap straight to the
+      // final length. Reduced-motion users still land on the correct length;
+      // theme.css has already collapsed the duration token by then.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          for (const [row, share] of rows) row.style.setProperty("--share", String(share));
+        });
+      });
 
       // Datasets with no hazard theme at all (the national-scope layers) are
       // stated explicitly rather than silently missing from the read-out.
