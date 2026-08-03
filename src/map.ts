@@ -33,6 +33,7 @@ import { getState, setState, type RouteState } from "./router";
 import type {
   CircleMarker,
   GeoJSON as GeoJSONLayer,
+  LatLng,
   LatLngBoundsExpression,
   LeafletMouseEvent,
   Map as LeafletMap,
@@ -332,8 +333,14 @@ export function layerStyle(
   };
 }
 
+/** Both quote forms are escaped, not just the double: every attribute this
+ * module writes is double-quoted today, but a single-quoted one added later
+ * must not silently become an injection point for service-supplied text. */
 function escapeHtml(value: string): string {
-  return value.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+  return value.replace(
+    /[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -393,9 +400,13 @@ function hitHtml(hit: LayerHit): string {
         ? `${hit.matches}× covers`
         : "covers"
       : `≈ ${formatDistance(hit.distance)}`;
+  // No aria-label on the button: it would *replace* the name computed from
+  // the row's contents, which is exactly the readout — theme, how it hit, and
+  // the matched feature's attributes — that a screen reader is here for. The
+  // action is appended as visually-hidden text instead, so the row announces
+  // what it says and then what it does.
   return `<li class="hazins__item" style="--swatch:${escapeHtml(hit.color)}">
-    <button type="button" class="hazhit" data-action="inspect-focus" data-id="${escapeHtml(hit.id)}"
-      aria-label="Zoom to the ${escapeHtml(hit.label)} feature at this point">
+    <button type="button" class="hazhit" data-action="inspect-focus" data-id="${escapeHtml(hit.id)}">
       <span class="hazhit__key" aria-hidden="true"></span>
       <span class="hazhit__body">
         <span class="hazhit__name">${escapeHtml(hit.label)}</span>
@@ -404,18 +415,39 @@ function hitHtml(hit: LayerHit): string {
           <span class="hazhit__mode" data-mode="${hit.mode}">${escapeHtml(badge)}</span>
         </span>
         ${attrChips(hit.feature)}
+        <span class="sr-only">Zoom to this feature</span>
       </span>
     </button>
   </li>`;
 }
 
+/** A layer the user switched on that the inspector could *not* test, because
+ * its GeoJSON is still in flight or its service failed. Reported rather than
+ * dropped: "no hazard covers this point" is a dangerous thing to say about a
+ * channel that was never checked. */
+export interface UncheckedLayer {
+  label: string;
+  /** Why it wasn't checked — "still loading" or "unavailable". */
+  note: string;
+}
+
 /** The whole popup: verdict first (the answer to the question that was
  * asked), then the hits, then one muted line for everything that was checked
- * and came back clear. */
-function inspectorHtml(result: InspectResult, lat: number, lon: number): string {
+ * and came back clear, then — only when there is one — the caveat naming the
+ * channels that could not be checked at all. Pure string-building, so
+ * src/inspect.test.ts can assert both the wording and — since feature
+ * attributes come straight off a council's ArcGIS service — that nothing
+ * reaches the popup unescaped. */
+export function inspectorHtml(
+  result: InspectResult,
+  lat: number,
+  lon: number,
+  unchecked: readonly UncheckedLayer[] = [],
+): string {
   const total = result.hits.length + result.misses.length;
   const clear = result.hits.length === 0;
   const misses = result.misses.map((m) => m.label).join(", ");
+  const pending = unchecked.map((u) => `${u.label} (${u.note})`).join(", ");
   return `<div class="hazins" data-state="${clear ? "clear" : "hit"}">
     <div class="hazins__head">
       <p class="hazins__label">${ICON_TARGET}<span>Point inspector</span></p>
@@ -428,7 +460,8 @@ function inspectorHtml(result: InspectResult, lat: number, lon: number): string 
     }</p>
     ${clear ? "" : `<ul class="hazins__list">${result.hits.map(hitHtml).join("")}</ul>`}
     ${misses ? `<p class="hazins__misses"><span class="hazins__misses-key">Not in</span> ${escapeHtml(misses)}</p>` : ""}
-    ${clear ? `<p class="hazins__nudge">Switch more hazard channels on to widen the check.</p>` : ""}
+    ${pending ? `<p class="hazins__pending">${ICON_ALERT}<span><span class="hazins__pending-key">Not checked</span> ${escapeHtml(pending)}</span></p>` : ""}
+    ${clear && !pending ? `<p class="hazins__nudge">Switch more hazard channels on to widen the check.</p>` : ""}
   </div>`;
 }
 
@@ -436,14 +469,24 @@ function inspectorHtml(result: InspectResult, lat: number, lon: number): string 
  * only — it takes no focus and carries no live-region role (see its
  * `_initLayout`), so without this the whole feature is silent to a screen
  * reader. Pure, so src/inspect.test.ts can assert the wording. */
-export function inspectionSummary(result: InspectResult): string {
+export function inspectionSummary(
+  result: InspectResult,
+  unchecked: readonly UncheckedLayer[] = [],
+): string {
   const total = result.hits.length + result.misses.length;
   const layers = `${total} drawn layer${total === 1 ? "" : "s"}`;
-  if (result.hits.length === 0) return `No drawn hazard covers this point. Checked ${layers}.`;
+  // The caveat is spoken too — an all-clear that quietly skipped a channel is
+  // the one thing this readout must never imply.
+  const caveat = unchecked.length
+    ? ` ${unchecked.length} not checked: ${unchecked.map((u) => `${u.label}, ${u.note}`).join("; ")}.`
+    : "";
+  if (result.hits.length === 0) {
+    return `No drawn hazard covers this point. Checked ${layers}.${caveat}`;
+  }
   const names = result.hits
     .map((h) => (h.mode === "covers" ? h.label : `${h.label}, nearby`))
     .join("; ");
-  return `This point is in ${result.hits.length} of ${layers}: ${names}.`;
+  return `This point is in ${result.hits.length} of ${layers}: ${names}.${caveat}`;
 }
 
 function setRowStatus(id: string, status: RowStatus, detail?: string): void {
@@ -507,15 +550,21 @@ async function activateLayer(L: LeafletModule, id: string): Promise<void> {
   const url = geoJsonQueryUrl(dataset);
   if (!url) {
     setRowStatus(id, "error", "No queryable layer");
+    refreshInspector();
     return;
   }
   setRowStatus(id, "loading");
+  // An open inspection has to admit, straight away, that a channel it cannot
+  // read yet is now in play — see drawnLayerSets.
+  refreshInspector();
   let data: HazardCollection;
   try {
     data = await loadLayer(id, url);
   } catch (error) {
     if (wanted.has(id)) {
       setRowStatus(id, "error", error instanceof Error ? error.message : "Request failed");
+      // "Still loading" has just become "unavailable"; the open answer says so.
+      refreshInspector();
     }
     return;
   }
@@ -559,6 +608,11 @@ function deactivateLayer(id: string): void {
   const layer = drawn.get(id);
   if (layer && view) view.map.removeLayer(layer);
   drawn.delete(id);
+  // A layer switched off while the popup was pointing at it takes the
+  // highlight with it — otherwise `highlighted` still names a layer that is
+  // no longer on the map, and highlightLayer's identity check would skip the
+  // restyle if it were ever drawn and hovered again.
+  if (highlighted === id) highlighted = null;
   // An open inspection is an answer about a specific set of layers; once that
   // set changes the answer is stale. refreshInspector() re-answers against
   // the smaller set in place, and closes the popup itself if nothing is left
@@ -598,6 +652,10 @@ let highlighted: string | null = null;
  * kept so a layer arriving or leaving can re-run the same inspection rather
  * than only being able to close the popup. `null` whenever no popup is open. */
 let inspectorPoint: LonLat | null = null;
+/** The markup currently in the open popup, so a re-answer that lands on the
+ * same words leaves the popup's DOM (and anyone's focus in it) alone. */
+let inspectorMarkup = "";
+let announceTimer: ReturnType<typeof setTimeout> | undefined;
 /** The feature that answered for each hit layer in the open popup, so a click
  * on a row can frame *that* extent rather than the whole layer. */
 const inspectorFeatures = new Map<string, Feature<Geometry, GeoJsonProperties>>();
@@ -606,8 +664,16 @@ const inspectorFeatures = new Map<string, Feature<Geometry, GeoJsonProperties>>(
  * link between a row in the popup and the geometry it is talking about. */
 function highlightLayer(id: string | null): void {
   if (highlighted === id) return;
+  const previous = highlighted;
   highlighted = id;
-  for (const [layerId, layer] of drawn) {
+  // Only the two layers whose emphasis actually changed are restyled: a
+  // GeoJSON setStyle writes ~8 attributes per child path, and a drawn ArcGIS
+  // layer can hold a couple of thousand of them, so repainting every layer on
+  // every row-to-row pointer move would stutter the whole map.
+  for (const layerId of [previous, id]) {
+    if (!layerId) continue;
+    const layer = drawn.get(layerId);
+    if (!layer) continue;
     const color = themeColor(findById(layerId)?.theme);
     const emphasis: StyleEmphasis = layerId === id ? "highlight" : "base";
     // A style *function* rather than an object: Leaflet hands it each child's
@@ -616,17 +682,27 @@ function highlightLayer(id: string | null): void {
   }
 }
 
-/** The drawn layers, in the order the user switched them on, paired with the
- * GeoJSON already sitting in the fetch cache. A layer still loading (or one
- * whose service failed) simply isn't inspectable yet. */
-function inspectableLayers(): InspectLayer[] {
-  const out: InspectLayer[] = [];
+/** Everything the user has switched on, split into what the inspector can
+ * actually test and what it cannot. A layer still fetching, or one whose
+ * service failed, holds no GeoJSON — and a hazard channel that was never
+ * tested must be *named* in the answer, not dropped from it: "no drawn hazard
+ * covers this point" would otherwise read as an all-clear for a fault layer
+ * that never loaded. */
+function drawnLayerSets(): { inspectable: InspectLayer[]; unchecked: UncheckedLayer[] } {
+  const inspectable: InspectLayer[] = [];
+  const unchecked: UncheckedLayer[] = [];
   for (const id of wanted) {
-    if (!drawn.has(id)) continue;
-    const collection = geoCache.get(id);
     const dataset = findById(id);
-    if (!collection || !dataset) continue;
-    out.push({
+    if (!dataset) continue;
+    const collection = drawn.has(id) ? geoCache.get(id) : undefined;
+    if (!collection) {
+      unchecked.push({
+        label: label(dataset),
+        note: rowStatus.get(id) === "error" ? "unavailable" : "still loading",
+      });
+      continue;
+    }
+    inspectable.push({
       id,
       label: label(dataset),
       theme: dataset.theme_label?.trim() || "Hazard layer",
@@ -634,7 +710,7 @@ function inspectableLayers(): InspectLayer[] {
       collection,
     });
   }
-  return out;
+  return { inspectable, unchecked };
 }
 
 /** Drop the inspector's own state — the mark, the highlight, the spoken
@@ -649,10 +725,32 @@ function clearInspectorState(): void {
   inspectorPopup = null;
   inspectorMark = null;
   inspectorPoint = null;
+  inspectorMarkup = "";
   inspectorFeatures.clear();
   highlightLayer(null);
+  if (announceTimer !== undefined) {
+    clearTimeout(announceTimer);
+    announceTimer = undefined;
+  }
   if (view) view.say.textContent = "";
   if (view && mark) view.map.removeLayer(mark);
+}
+
+/** Speak one verdict into the map's status region. The blank and the fill are
+ * deliberately in *separate* tasks: assistive tech diffs a live region once
+ * per task, so clearing and re-filling it in the same one is no change at all
+ * — and two clicks with the same verdict would then be announced only once.
+ * The clear happens synchronously so a stale answer is never left standing
+ * while the new one is pending. */
+function announce(message: string): void {
+  if (!view) return;
+  const node = view.say;
+  node.textContent = "";
+  if (announceTimer !== undefined) clearTimeout(announceTimer);
+  announceTimer = setTimeout(() => {
+    announceTimer = undefined;
+    node.textContent = message;
+  }, 60);
 }
 
 /** Actively close the open inspection — a new layer landed, a layer left, or
@@ -674,19 +772,31 @@ function closeInspector(): void {
  * nothing-drawn no-op. */
 function refreshInspector(): void {
   if (!inspectorPopup || !inspectorPoint || !view) return;
-  const layers = inspectableLayers();
-  if (layers.length === 0) {
+  const { inspectable, unchecked } = drawnLayerSets();
+  if (inspectable.length === 0) {
     closeInspector();
     return;
   }
   const [lon, lat] = inspectorPoint;
-  const result = inspectPoint(inspectorPoint, layers, toleranceForZoom(view.map.getZoom(), lat));
+  const result = inspectPoint(inspectorPoint, inspectable, toleranceForZoom(view.map.getZoom(), lat));
   inspectorFeatures.clear();
   for (const hit of result.hits) {
     if (hit.feature) inspectorFeatures.set(hit.id, hit.feature);
   }
-  inspectorPopup.setContent(inspectorHtml(result, lat, lon));
-  view.say.textContent = inspectionSummary(result);
+  const html = inspectorHtml(result, lat, lon, unchecked);
+  // Only rewrite when the answer actually changed: setContent rebuilds the
+  // popup's DOM, which replays the entrance animation and drops the focus of
+  // anyone keyboarding through the hit rows.
+  if (html !== inspectorMarkup) {
+    inspectorMarkup = html;
+    // The row the pointer (or focus) was on is destroyed by this rewrite, and
+    // neither `mouseleave` nor — in Chromium, for a removed focused element —
+    // `focusout` reliably fires for it. Drop the highlight explicitly, or a
+    // layer stays lit up on the map with nothing pointing at it.
+    highlightLayer(null);
+    inspectorPopup.setContent(html);
+    announce(inspectionSummary(result, unchecked));
+  }
 }
 
 /** Frame the single feature that answered for a row. Same reduced-motion
@@ -719,29 +829,34 @@ function wirePopupContent(L: LeafletModule, popup: Popup): void {
   });
 }
 
-/** Test the clicked point against every drawn layer and answer in one popup.
- * With nothing drawn there is nothing to answer with, so the click is a
- * no-op rather than an empty popup. */
-function inspectAt(L: LeafletModule, map: LeafletMap, event: LeafletMouseEvent): void {
-  const layers = inspectableLayers();
-  if (layers.length === 0) return;
-  const { lat, lng } = event.latlng;
-  // Leaflet's continuous world scroll lets `event.latlng.lng` drift past
-  // ±180 the moment the user pans to a wrapped copy of the map; every
-  // dataset's GeoJSON is normalised to -180..180, so the geometry test (and
-  // the coordinate printed in the popup) run on the wrapped point. The mark
-  // and the popup itself stay at the *literal* click latlng, so they still
-  // land exactly under the cursor even when that click was on a wrapped
-  // copy of the world.
-  const wrapped = event.latlng.wrap();
+/** Test one point against every drawn layer and answer in a single popup —
+ * `at` is the clicked latlng, or the view centre when the inspection came
+ * from the keyboard. With nothing drawn there is nothing to answer with, so
+ * it is a no-op rather than an empty popup. */
+function inspectAt(L: LeafletModule, map: LeafletMap, at: LatLng): void {
+  const { inspectable, unchecked } = drawnLayerSets();
+  // Nothing drawn yet — including the case where every switched-on layer is
+  // still in flight — leaves the click a no-op rather than opening a popup
+  // with no answer in it. Once the first layer lands, refreshInspector() is
+  // not involved either: there is no popup to refresh.
+  if (inspectable.length === 0) return;
+  const { lat, lng } = at;
+  // Leaflet's continuous world scroll lets a longitude drift past ±180 the
+  // moment the user pans to a wrapped copy of the map; every dataset's
+  // GeoJSON is normalised to -180..180, so the geometry test (and the
+  // coordinate printed in the popup) run on the wrapped point. The mark and
+  // the popup itself stay at the *literal* latlng, so they still land exactly
+  // under the cursor even when that click was on a wrapped copy of the world.
+  const wrapped = at.wrap();
   const result = inspectPoint(
     [wrapped.lng, wrapped.lat],
-    layers,
+    inspectable,
     toleranceForZoom(map.getZoom(), wrapped.lat),
   );
 
   closeInspector();
   inspectorPoint = [wrapped.lng, wrapped.lat];
+  inspectorMarkup = inspectorHtml(result, wrapped.lat, wrapped.lng, unchecked);
   for (const hit of result.hits) {
     if (hit.feature) inspectorFeatures.set(hit.id, hit.feature);
   }
@@ -760,17 +875,27 @@ function inspectAt(L: LeafletModule, map: LeafletMap, event: LeafletMouseEvent):
     maxHeight: Math.max(160, map.getSize().y - 96),
     autoPanPadding: [24, 24],
   })
-    .setLatLng(event.latlng)
-    .setContent(inspectorHtml(result, wrapped.lat, wrapped.lng))
+    .setLatLng(at)
+    .setContent(inspectorMarkup)
     .openOn(map);
   wirePopupContent(L, inspectorPopup);
-  // closeInspector() above blanked this, so even two identical verdicts in a
-  // row are two separate mutations and both get announced.
-  if (view) view.say.textContent = inspectionSummary(result);
+  announce(inspectionSummary(result, unchecked));
 }
 
 function wireInspector(L: LeafletModule, map: LeafletMap): void {
-  map.on("click", (event) => inspectAt(L, map, event as LeafletMouseEvent));
+  map.on("click", (event) => inspectAt(L, map, (event as LeafletMouseEvent).latlng));
+  // Keyboard parity: Leaflet's own keyboard handler pans and zooms the focused
+  // map but never synthesises a click, so without this the whole inspector
+  // would be pointer-only. Enter inspects the centre of the current view —
+  // the spot the arrow keys just drove to — and the mark shows exactly which
+  // point was tested. Keys pressed inside the popup belong to its own buttons.
+  map.on("keydown", (event) => {
+    const original = (event as unknown as { originalEvent: KeyboardEvent }).originalEvent;
+    if (original.key !== "Enter" || original.altKey || original.ctrlKey || original.metaKey) return;
+    if (original.target !== map.getContainer()) return;
+    original.preventDefault();
+    inspectAt(L, map, map.getCenter());
+  });
   // Closing by the ✕, by Escape, or by the next click's autoClose all land
   // here *while Leaflet is still tearing the popup down* — only clear our
   // own state, never call back into map.closePopup (see clearInspectorState).
@@ -866,7 +991,7 @@ function buildMarkup(root: HTMLElement): void {
       <div class="hazmap__head">
         <div class="hazmap__ident">
           <p class="hazmap__label">Hazard overlay</p>
-          <p class="hazmap__hint">Switch layers on to draw them live from their ArcGIS service · click anywhere on the map to see what covers that point</p>
+          <p class="hazmap__hint">Switch layers on to draw them live from their ArcGIS service · click anywhere on the map — or focus it and press Enter — to see what covers that point</p>
         </div>
         <p class="hazmap__readout" aria-hidden="true">
           <span class="hazmap__count">0</span>
@@ -1017,8 +1142,15 @@ export default function renderMap(root: HTMLElement, state: RouteState): void {
     inspectorPopup = null;
     inspectorMark = null;
     inspectorPoint = null;
+    inspectorMarkup = "";
     inspectorFeatures.clear();
     highlighted = null;
+    // A verdict queued for the old mount's status region must not land in the
+    // new one's — the popup it described is gone with the old map.
+    if (announceTimer !== undefined) {
+      clearTimeout(announceTimer);
+      announceTimer = undefined;
+    }
   }
   if (booting) return;
   booting = true;

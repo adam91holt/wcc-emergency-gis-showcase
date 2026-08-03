@@ -201,7 +201,15 @@ function vertexDistance(point: LonLat, vertex: Position, kx: number): number {
   return Math.hypot((point[0] - vertex[0]) * kx, point[1] - vertex[1]);
 }
 
-function lineDistance(point: LonLat, line: Position[], kx: number): number {
+/** Nearest distance from the point to a run of vertices. `closed` walks the
+ * edge back from the last vertex to the first as well — which is what a
+ * polygon *ring* needs: GeoJSON rings are supposed to repeat their first
+ * vertex last, but services do emit unclosed ones, and `ringContains` /
+ * `ringBoundaryContains` both wrap that edge. Without the same wrap here, an
+ * unclosed ring would measure as being a whole side of the polygon away from
+ * a point sitting right on its closing edge. An open LineString (a fault
+ * trace) is never closed this way — its two ends are genuinely apart. */
+function lineDistance(point: LonLat, line: Position[], kx: number, closed = false): number {
   if (!Array.isArray(line) || line.length === 0) return Infinity;
   if (line.length === 1) return vertexDistance(point, line[0], kx);
   let best = Infinity;
@@ -209,7 +217,20 @@ function lineDistance(point: LonLat, line: Position[], kx: number): number {
     const d = segmentDistance(point, line[i - 1], line[i], kx);
     if (d < best) best = d;
   }
+  if (closed) {
+    const first = line[0];
+    const last = line[line.length - 1];
+    // Already-closed rings repeat their first vertex, so this edge is a point
+    // and the loop above has covered it — measuring it again is harmless.
+    const d = segmentDistance(point, last, first, kx);
+    if (d < best) best = d;
+  }
   return best;
+}
+
+/** A polygon ring's boundary: `lineDistance` with the closing edge walked. */
+function ringDistance(point: LonLat, ring: Position[], kx: number): number {
+  return lineDistance(point, ring, kx, true);
 }
 
 /** Distance from the point to a geometry's *outline*, in latitude degrees:
@@ -230,10 +251,10 @@ export function distanceToGeometry(point: LonLat, geometry: Geometry | null | un
     case "MultiLineString":
       return geometry.coordinates.reduce((best, l) => Math.min(best, lineDistance(point, l, kx)), Infinity);
     case "Polygon":
-      return geometry.coordinates.reduce((best, r) => Math.min(best, lineDistance(point, r, kx)), Infinity);
+      return geometry.coordinates.reduce((best, r) => Math.min(best, ringDistance(point, r, kx)), Infinity);
     case "MultiPolygon":
       return geometry.coordinates.reduce(
-        (best, rings) => rings.reduce((b, r) => Math.min(b, lineDistance(point, r, kx)), best),
+        (best, rings) => rings.reduce((b, r) => Math.min(b, ringDistance(point, r, kx)), best),
         Infinity,
       );
     case "GeometryCollection":

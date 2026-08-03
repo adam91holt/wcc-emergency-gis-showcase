@@ -859,13 +859,47 @@
   color: var(--haz-ink-3);
 }
 
+/* The section label for the cleared layers. It separates itself from the
+ * names beside it by weight and tracking, not by opacity — secondary text on
+ * this console always steps down the ink ladder instead. */
 .hazins__misses-key {
   font-size: var(--haz-fs-label);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--haz-ink-3);
-  opacity: 0.8;
+  color: var(--haz-ink-2);
+}
+
+/* The caveat: channels the user switched on that the inspector could not
+ * test. It is the one line here that must not read as quiet furniture — an
+ * unchecked hazard layer is the difference between "clear" and "unknown" — so
+ * it carries the alert icon and sits on a tinted, ruled plate. */
+.hazins__pending {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 6px 8px;
+  font-size: var(--haz-fs-micro);
+  line-height: 1.5;
+  color: var(--haz-ink-2);
+  background: color-mix(in srgb, var(--haz-signal) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--haz-signal) 34%, transparent);
+  border-radius: 7px;
+}
+
+.hazins__pending .ico {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--haz-signal);
+}
+
+.hazins__pending-key {
+  font-size: var(--haz-fs-label);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--haz-signal);
 }
 
 .hazins__nudge {

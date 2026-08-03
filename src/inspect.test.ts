@@ -9,7 +9,13 @@ import {
   type InspectLayer,
   type LonLat,
 } from "./inspect";
-import { inspectionSummary, layerStyle, toleranceForZoom } from "./map";
+import {
+  inspectionSummary,
+  inspectorHtml,
+  layerStyle,
+  toleranceForZoom,
+  type UncheckedLayer,
+} from "./map";
 import type {
   Feature,
   FeatureCollection,
@@ -124,6 +130,16 @@ describe("pointInPolygon", () => {
     expect(pointInPolygon([174.95, -41.3], TWO_PARTS)).toBe(false);
   });
 
+  it("subtracts a hole from one part of a MultiPolygon without touching the other", () => {
+    const holed: MultiPolygon = {
+      type: "MultiPolygon",
+      coordinates: [SQUARE_WITH_HOLE.coordinates, TWO_PARTS.coordinates[1]],
+    };
+    expect(pointInPolygon([174.8, -41.3], holed)).toBe(false); // in the hole
+    expect(pointInPolygon([174.75, -41.3], holed)).toBe(true); // holed part
+    expect(pointInPolygon([175.05, -41.3], holed)).toBe(true); // second part
+  });
+
   it("accepts rings that are not explicitly closed", () => {
     const open: Polygon = { type: "Polygon", coordinates: [SQUARE.coordinates[0].slice(0, -1)] };
     expect(pointInPolygon(INSIDE, open)).toBe(true);
@@ -219,9 +235,34 @@ describe("distance to lines and points", () => {
   });
 
   it("measures to a polygon's boundary, not its interior", () => {
-    // Dead centre of the square: inside it, but a long way from any edge.
+    // Dead centre of the square: inside it, but 0.05° from the nearest edge
+    // (the north and south edges) — containment says nothing about distance.
     expect(pointInPolygon([174.8, -41.3], SQUARE)).toBe(true);
-    expect(distanceToGeometry([174.8, -41.3], SQUARE)).toBeGreaterThan(0.04);
+    expect(distanceToGeometry([174.8, -41.3], SQUARE)).toBeCloseTo(0.05, 9);
+  });
+
+  it("measures a ring's closing edge, whether or not the ring repeats its first vertex", () => {
+    // The west edge of SQUARE is its *closing* edge once the repeated final
+    // vertex is dropped. Walking the vertex list without wrapping would put
+    // this point a whole polygon width (0.2° of longitude) away instead of
+    // the 0.001° it actually is — and pointInPolygon accepts unclosed rings
+    // (above), so the two halves of the module have to agree.
+    const open: Polygon = { type: "Polygon", coordinates: [SQUARE.coordinates[0].slice(0, -1)] };
+    const justWest: LonLat = [174.699, -41.3];
+    const expected = 0.001 * lonScale(-41.3);
+    expect(distanceToGeometry(justWest, SQUARE)).toBeCloseTo(expected, 9);
+    expect(distanceToGeometry(justWest, open)).toBeCloseTo(expected, 9);
+    expect(pointNearGeometry(justWest, open, expected * 1.1)).toBe(true);
+  });
+
+  it("refuses a nonsense tolerance instead of hitting everything", () => {
+    const onTheLine: LonLat = [174.78, -41.29];
+    expect(distanceToGeometry(onTheLine, FAULT)).toBe(0);
+    // A zero tolerance still hits a point sitting exactly on the trace…
+    expect(pointNearGeometry(onTheLine, FAULT, 0)).toBe(true);
+    // …but NaN and negatives are not "everything is near", they are no hit.
+    expect(pointNearGeometry(onTheLine, FAULT, Number.NaN)).toBe(false);
+    expect(pointNearGeometry(onTheLine, FAULT, -1)).toBe(false);
   });
 });
 
@@ -388,6 +429,196 @@ describe("inspectionSummary", () => {
     const said = inspectionSummary(inspectPoint([175.5, -41.3], [flood, faults], 0.0002));
     expect(said).toBe("No drawn hazard covers this point. Checked 2 drawn layers.");
   });
+
+  it("speaks the layers that could not be checked, so an all-clear is never absolute", () => {
+    const result = inspectPoint([175.5, -41.3], [flood], 0.0002);
+    const said = inspectionSummary(result, [{ label: "Active faults", note: "unavailable" }]);
+    expect(said).toBe(
+      "No drawn hazard covers this point. Checked 1 drawn layer. 1 not checked: Active faults, unavailable.",
+    );
+  });
+
+  it("carries the caveat onto a positive verdict too", () => {
+    const result = inspectPoint([174.75, -41.3], [flood], 0.0002);
+    const said = inspectionSummary(result, [{ label: "Landslides", note: "still loading" }]);
+    expect(said).toBe(
+      "This point is in 1 of 1 drawn layer: Flood hazard extent. 1 not checked: Landslides, still loading.",
+    );
+  });
+});
+
+describe("inspectorHtml", () => {
+  const flood = layer({
+    id: "flood-extent",
+    label: "Flood hazard extent",
+    theme: "Flood hazard area",
+    color: "#2ec4b6",
+    collection: collection(feature(SQUARE, { DEPTH: "0.4 m" })),
+  });
+  const faults = layer({
+    id: "active-faults",
+    label: "Active faults",
+    theme: "Earthquake hazard",
+    color: "#ff5d73",
+    collection: collection(feature(FAULT)),
+  });
+  // Deliberately east of the others, so it is always a miss for the clicks
+  // below — the "checked and came back clear" half of the answer.
+  const slips = layer({
+    id: "landslides",
+    label: "Landslides",
+    collection: collection(feature({ type: "Polygon", coordinates: TWO_PARTS.coordinates[1] })),
+  });
+
+  /** The popup markup for one click. The suite runs in the node environment
+   * (vite.config.ts), so these assert against the rendered string rather than
+   * a parsed DOM — which is also the level the escaping matters at. */
+  function render(
+    point: LonLat,
+    layers: InspectLayer[],
+    tolerance = 0.0002,
+    unchecked: UncheckedLayer[] = [],
+  ): string {
+    return inspectorHtml(inspectPoint(point, layers, tolerance), point[1], point[0], unchecked);
+  }
+
+  /** The visible text of the first element carrying `class="<name>"`: scan to
+   * its own closing tag (counting nested tags of the same name), then strip
+   * inline markup and collapse whitespace — what a reader actually sees. */
+  function text(html: string, name: string): string | null {
+    const at = html.indexOf(`class="${name}"`);
+    if (at < 0) return null;
+    const tag = /^<([a-z]+)/.exec(html.slice(html.lastIndexOf("<", at)))![1];
+    const opener = new RegExp(`<${tag}[\\s>]`, "g");
+    const closer = new RegExp(`</${tag}>`, "g");
+    const start = html.indexOf(">", at) + 1;
+    let cursor = start;
+    let depth = 1;
+    while (depth > 0) {
+      opener.lastIndex = cursor;
+      closer.lastIndex = cursor;
+      const open = opener.exec(html);
+      const close = closer.exec(html);
+      if (!close) return null;
+      if (open && open.index < close.index) {
+        depth++;
+        cursor = open.index + 1;
+        continue;
+      }
+      depth--;
+      cursor = close.index + 1;
+      if (depth === 0) {
+        return html.slice(start, close.index).replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+      }
+    }
+    return null;
+  }
+
+  it("lists every covering layer with its label, theme and colour swatch", () => {
+    const html = render([174.75, -41.3], [flood, faults, slips]);
+    expect(html.match(/class="hazins__item"/g)).toHaveLength(1);
+    expect(html).toContain('style="--swatch:#2ec4b6"');
+    expect(text(html, "hazhit__name")).toBe("Flood hazard extent");
+    expect(text(html, "hazhit__theme")).toBe("Flood hazard area");
+    expect(text(html, "hazins__verdict")).toBe("In 1 of 3 drawn layers");
+    // The two layers that came back clear are not rendered as rows.
+    expect(html).not.toContain("Earthquake hazard");
+  });
+
+  it("summarises the layers that came back clear on one 'Not in' line", () => {
+    const html = render([174.75, -41.3], [flood, faults, slips]);
+    expect(html.match(/class="hazins__misses"/g)).toHaveLength(1);
+    expect(text(html, "hazins__misses")).toBe("Not in Active faults, Landslides");
+  });
+
+  it("says so plainly and nudges when nothing covers the point", () => {
+    const html = render([175.5, -41.3], [flood, faults]);
+    expect(html).toContain('data-state="clear"');
+    expect(text(html, "hazins__verdict")).toBe("No drawn hazard covers this point");
+    expect(html).not.toContain("hazins__list");
+    expect(text(html, "hazins__nudge")).toMatch(/switch more hazard channels on/i);
+  });
+
+  it("badges a covering polygon 'covers' and a nearby line with its distance", () => {
+    expect(render([174.75, -41.3], [flood])).toContain('data-mode="covers">covers<');
+    const near = render([174.781, -41.29], [faults], 0.0008);
+    expect(near).toContain('data-mode="near"');
+    // ~84 m east of the fault trace — reported in metres, not as coverage.
+    expect(near).toMatch(/data-mode="near">≈ 8[0-9] m</);
+    expect(near).not.toContain(">covers<");
+  });
+
+  it("counts stacked extents on one layer in its badge", () => {
+    const stacked = layer({
+      id: "stacked",
+      label: "Coastal inundation 1.0 m SLR",
+      collection: collection(feature(SQUARE), feature(TWO_PARTS)),
+    });
+    expect(render([174.8, -41.3], [stacked])).toContain(">2× covers<");
+  });
+
+  it("shows the matched feature's own attributes", () => {
+    const html = render([174.75, -41.3], [flood]);
+    expect(html).toContain('<span class="hazhit__k">DEPTH</span>');
+    expect(html).toContain('<span class="hazhit__v">0.4 m</span>');
+  });
+
+  it("escapes service-supplied attributes rather than injecting them as markup", () => {
+    const hostile = layer({
+      id: "hostile",
+      label: 'Flood "extent" <b>2100</b>',
+      collection: collection(
+        feature(SQUARE, {
+          "<img src=x onerror=alert(1)>": '"><script>alert(1)</script>',
+          OWNER: "Wellington's coast",
+        }),
+      ),
+    });
+    const html = render([174.75, -41.3], [hostile]);
+    expect(html).not.toContain("<script");
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("<b>");
+    // Single quotes too, so a future single-quoted attribute cannot be broken
+    // out of by service text.
+    expect(html).toContain("Wellington&#39;s coast");
+    expect(html).not.toContain("Wellington's coast");
+    // The payloads survive as escaped *text*, which is what a readout shows.
+    expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    expect(html).toContain("&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(html).toContain("Flood &quot;extent&quot; &lt;b&gt;2100&lt;/b&gt;");
+  });
+
+  it("prints the tested coordinate in hemisphere form", () => {
+    expect(text(render([174.75, -41.3], [flood]), "hazins__coord")).toBe("41.3000°S · 174.7500°E");
+  });
+
+  it("gives every hit row a focusable control whose name carries the readout", () => {
+    const html = render([174.75, -41.3], [flood]);
+    expect(html).toContain('<button type="button" class="hazhit" data-action="inspect-focus" data-id="flood-extent"');
+    // No aria-label: it would override the row's own text, which is the
+    // readout (layer, theme, badge, attributes) a screen reader needs. The
+    // action rides along as visually-hidden text inside the same button.
+    expect(html).not.toContain("aria-label");
+    expect(html).toContain('<span class="sr-only">Zoom to this feature</span>');
+  });
+
+  it("names the layers it could not check instead of implying an all-clear", () => {
+    const html = render([175.5, -41.3], [flood], 0.0002, [
+      { label: "Active faults", note: "unavailable" },
+      { label: "Landslides", note: "still loading" },
+    ]);
+    expect(text(html, "hazins__verdict")).toBe("No drawn hazard covers this point");
+    expect(text(html, "hazins__pending")).toBe(
+      "Not checked Active faults (unavailable), Landslides (still loading)",
+    );
+    // The "switch more layers on" nudge would be the wrong advice while two
+    // switched-on layers are still outstanding.
+    expect(html).not.toContain("hazins__nudge");
+  });
+
+  it("leaves the caveat out entirely when every drawn layer was checked", () => {
+    expect(render([174.75, -41.3], [flood, faults])).not.toContain("hazins__pending");
+  });
 });
 
 describe("layerStyle", () => {
@@ -411,17 +642,28 @@ describe("layerStyle", () => {
     }
   });
 
-  it("thickens the stroke as emphasis rises, and never drops it", () => {
+  it("raises stroke, fill and opacity with every step of emphasis", () => {
     const base = layerStyle("#ff5d73", area);
     const hover = layerStyle("#ff5d73", area, "hover");
     const highlight = layerStyle("#ff5d73", area, "highlight");
     expect(hover.weight!).toBeGreaterThan(base.weight!);
     expect(highlight.weight!).toBeGreaterThan(hover.weight!);
-    expect(highlight.fillOpacity!).toBeGreaterThan(base.fillOpacity!);
+    expect(hover.fillOpacity!).toBeGreaterThan(base.fillOpacity!);
+    expect(highlight.fillOpacity!).toBeGreaterThan(hover.fillOpacity!);
+    // Stroke opacity lifts off its resting value once a feature is called out.
+    expect(base.opacity!).toBeLessThan(1);
+    expect(hover.opacity).toBe(1);
+    expect(highlight.opacity).toBe(1);
   });
 
   it("paints stroke and fill from the layer's own colour, and defaults to area", () => {
-    expect(layerStyle("#2ec4b6")).toMatchObject({ color: "#2ec4b6", fillColor: "#2ec4b6" });
+    expect(layerStyle("#2ec4b6")).toMatchObject({
+      color: "#2ec4b6",
+      fillColor: "#2ec4b6",
+      fillOpacity: 0.22,
+      weight: 1.6,
+    });
+    // No feature at all is treated as an extent, not as a marker.
     expect(layerStyle("#2ec4b6").fillOpacity).toBe(layerStyle("#2ec4b6", area).fillOpacity);
   });
 });
