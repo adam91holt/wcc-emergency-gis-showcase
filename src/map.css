@@ -705,6 +705,18 @@
   color: var(--haz-ink-2);
 }
 
+/* Near-only: every hit is a proximity read, never a containing polygon, so
+ * the verdict must not carry the same full-strength ink + lit-signal numbers
+ * as a genuine "in" — that combination is what a "covers" verdict owns. The
+ * label switches to "Near" in map.ts; this is the rest of the tell. */
+.hazins[data-state="near"] .hazins__verdict {
+  color: var(--haz-ink-2);
+}
+
+.hazins[data-state="near"] .hazins__num {
+  color: var(--haz-ink-2);
+}
+
 .hazins__num {
   font-family: var(--haz-mono);
   font-variant-numeric: tabular-nums;

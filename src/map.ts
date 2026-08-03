@@ -455,9 +455,18 @@ export function inspectorHtml(
 ): string {
   const total = result.hits.length + result.misses.length;
   const clear = result.hits.length === 0;
+  // A hit list made entirely of "near" reads — a fault trace a few metres
+  // off, a gauge point just outside its marker — is not the claim "this point
+  // is inside a hazard". The headline (and the `data-state` the CSS below
+  // keys off) must say "near", not "in", whenever no hit actually contains
+  // the point; a mix of a covering polygon and a nearby line still leads with
+  // "in" since that read is genuinely true.
+  const anyCovers = result.hits.some((h) => h.mode === "covers");
+  const state = clear ? "clear" : anyCovers ? "hit" : "near";
+  const verb = state === "near" ? "Near" : "In";
   const misses = result.misses.map((m) => m.label).join(", ");
   const pending = unchecked.map((u) => `${u.label} (${u.note})`).join(", ");
-  return `<div class="hazins" data-state="${clear ? "clear" : "hit"}">
+  return `<div class="hazins" data-state="${state}">
     <div class="hazins__head">
       <p class="hazins__label">${ICON_TARGET}<span>Point inspector</span></p>
       <p class="hazins__coord">${escapeHtml(formatCoord(lat, lon))}</p>
@@ -465,7 +474,7 @@ export function inspectorHtml(
     <p class="hazins__verdict">${
       clear
         ? "No drawn hazard covers this point"
-        : `In <span class="hazins__num">${result.hits.length}</span> of <span class="hazins__num">${total}</span> drawn layer${total === 1 ? "" : "s"}`
+        : `${verb} <span class="hazins__num">${result.hits.length}</span> of <span class="hazins__num">${total}</span> drawn layer${total === 1 ? "" : "s"}`
     }</p>
     ${clear ? "" : `<ul class="hazins__list">${result.hits.map(hitHtml).join("")}</ul>`}
     ${misses ? `<p class="hazins__misses"><span class="hazins__misses-key">Not in</span> ${escapeHtml(misses)}</p>` : ""}
@@ -491,6 +500,14 @@ export function inspectionSummary(
     : "";
   if (result.hits.length === 0) {
     return `No drawn hazard covers this point. Checked ${layers}.${caveat}`;
+  }
+  const anyCovers = result.hits.some((h) => h.mode === "covers");
+  if (!anyCovers) {
+    // Every hit here is a proximity read, never a containing polygon, so the
+    // sentence must not claim the point is "in" anything — that is the
+    // headline this exact wording mirrors in inspectorHtml's "near" state.
+    const names = result.hits.map((h) => h.label).join("; ");
+    return `Near ${result.hits.length} of ${layers}: ${names}.${caveat}`;
   }
   const names = result.hits
     .map((h) => (h.mode === "covers" ? h.label : `${h.label}, nearby`))

@@ -420,9 +420,19 @@ describe("inspectionSummary", () => {
     expect(said).toBe("This point is in 1 of 2 drawn layers: Flood hazard extent.");
   });
 
-  it("marks a proximity hit as nearby rather than covering", () => {
+  it("leads with 'Near', not 'in', when every hit is a proximity read", () => {
+    // A click ~84 m from a fault trace is not a claim that the point is
+    // inside a hazard — the sentence must not read as coverage.
     const said = inspectionSummary(inspectPoint([174.781, -41.29], [faults], 0.0008));
-    expect(said).toBe("This point is in 1 of 1 drawn layer: Active faults, nearby.");
+    expect(said).toBe("Near 1 of 1 drawn layer: Active faults.");
+  });
+
+  it("keeps 'is in' when a covering polygon sits alongside a merely-nearby line", () => {
+    // The fault is also within tolerance of this point, but the flood square
+    // genuinely contains it — the sentence should still claim coverage, and
+    // the nearby line keeps its own ", nearby" qualifier within the list.
+    const said = inspectionSummary(inspectPoint([174.7801, -41.29], [flood, faults], 0.001));
+    expect(said).toBe("This point is in 2 of 2 drawn layers: Flood hazard extent; Active faults, nearby.");
   });
 
   it("says so plainly, with the count checked, when nothing covers the point", () => {
@@ -546,6 +556,22 @@ describe("inspectorHtml", () => {
     // ~84 m east of the fault trace — reported in metres, not as coverage.
     expect(near).toMatch(/data-mode="near">≈ 8[0-9] m</);
     expect(near).not.toContain(">covers<");
+  });
+
+  it("leads the verdict with 'Near' and marks a distinct state when every hit is a proximity read", () => {
+    // A click near the fault but inside no polygon must not read "In 1 of 1
+    // drawn layer" — that phrasing is coverage language, and this point is
+    // not covered by anything drawn.
+    const html = render([174.781, -41.29], [faults], 0.0008);
+    expect(html).toContain('data-state="near"');
+    expect(text(html, "hazins__verdict")).toBe("Near 1 of 1 drawn layer");
+    expect(text(html, "hazins__verdict")).not.toMatch(/^In /);
+  });
+
+  it("keeps the 'in' verdict and 'hit' state when a covering polygon sits alongside a merely-nearby line", () => {
+    const html = render([174.7801, -41.29], [flood, faults], 0.001);
+    expect(html).toContain('data-state="hit"');
+    expect(text(html, "hazins__verdict")).toBe("In 2 of 2 drawn layers");
   });
 
   it("counts stacked extents on one layer in its badge", () => {
