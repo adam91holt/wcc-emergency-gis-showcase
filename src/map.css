@@ -1,0 +1,794 @@
+/* Hazard overlay console — the map surface for src/map.ts.
+ *
+ * Concept (carried on from the discovery console in filters.css): this is the
+ * situation display above the dispatcher's desk. A dimmed, desaturated
+ * basemap plate sits under coloured hazard geometry, and every layer is a
+ * *channel* down the right-hand rack — swatch, name, and a live mono readout
+ * of how many features that channel is currently drawing. The rack is
+ * instrument-dense (32 channels are meant to be scanned and compared); the
+ * map plate is the one surface that gets room to breathe.
+ *
+ * Dark-first: the ladder below is authored for dark and ported to light at
+ * the bottom of the token block. The product's owned accent (--accent from
+ * style.css) drives every piece of chrome; hazard colours are a separate,
+ * data-derived key handed in from map.ts as --swatch, so no component here
+ * hardcodes a layer colour. */
+
+:root {
+  /* Surface ladder: page (--bg) → panel → raised → raised-2, 4–6px steps. */
+  --haz-panel: #101a2c;
+  --haz-raised: #16233a;
+  --haz-raised-2: #1d2c47;
+  --haz-line: #23324c;
+  --haz-line-2: #2f4364;
+
+  /* Ink stepped down in luminance, never in opacity. */
+  --haz-ink: #e7edf8;
+  --haz-ink-2: #a4b5d0;
+  --haz-ink-3: #6f819f;
+
+  --haz-signal: var(--accent);
+  --haz-on-signal: #061523;
+  --haz-danger: #ff6b81;
+  --haz-shadow: 0 18px 40px rgba(2, 8, 20, 0.5);
+  --haz-veil: rgba(231, 237, 248, 0.07);
+
+  /* Same paired type as the discovery console: sans chrome, mono numbers. */
+  --haz-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --haz-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+
+  /* Type scale — 6 sizes, 3 weights (400/600/700). */
+  --haz-fs-label: 10.5px;
+  --haz-fs-micro: 11px;
+  --haz-fs-chip: 12.5px;
+  --haz-fs-body: 13.5px;
+  --haz-fs-lead: 15px;
+  --haz-fs-readout: 28px;
+
+  --haz-fast: 120ms;
+  --haz-mid: 200ms;
+  --haz-ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+
+  /* The basemap is scenery, not the subject: dark mode inverts and cools the
+   * OSM raster so the hazard geometry above it is the brightest thing on the
+   * plate. */
+  --haz-tiles: invert(1) hue-rotate(180deg) brightness(0.93) contrast(0.88) saturate(0.7);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --haz-panel: #ffffff;
+    --haz-raised: #f1f5fa;
+    --haz-raised-2: #e6edf6;
+    --haz-line: #dde5ef;
+    --haz-line-2: #c2cfe0;
+    --haz-ink: #0f172a;
+    --haz-ink-2: #48586f;
+    --haz-ink-3: #74839a;
+    --haz-on-signal: #f7fbff;
+    --haz-danger: #c2334b;
+    --haz-shadow: 0 18px 40px rgba(15, 23, 42, 0.14);
+    --haz-veil: rgba(15, 23, 42, 0.05);
+    --haz-tiles: saturate(0.72) brightness(1.02) contrast(0.96);
+  }
+}
+
+/* Repeated rather than imported: this module owns its own utility so the map
+ * never depends on another feature's stylesheet being loaded. */
+.hazmap .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.hazmap .ico {
+  flex: none;
+  display: block;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Shell                                                                   */
+/* ---------------------------------------------------------------------- */
+
+.hazmap {
+  position: relative;
+  margin: 16px 0 20px;
+  padding: 14px 16px 16px;
+  background: var(--haz-panel);
+  border: 1px solid var(--haz-line);
+  border-radius: 14px;
+  font-family: var(--haz-sans);
+  color: var(--haz-ink);
+}
+
+.hazmap__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--haz-line);
+}
+
+.hazmap__ident {
+  min-width: 0;
+  margin-right: auto;
+}
+
+.hazmap__label,
+.hazgroup__label {
+  margin: 0;
+  font-size: var(--haz-fs-label);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--haz-ink-3);
+}
+
+.hazmap__hint {
+  margin: 6px 0 0;
+  max-width: 62ch;
+  font-size: var(--haz-fs-micro);
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--haz-ink-3);
+}
+
+.hazmap__readout {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+}
+
+.hazmap__count,
+.hazmap__features {
+  font-family: var(--haz-mono);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--haz-ink);
+}
+
+.hazmap__count {
+  font-size: var(--haz-fs-readout);
+}
+
+.hazmap__features {
+  font-size: var(--haz-fs-lead);
+  color: var(--haz-ink-2);
+}
+
+.hazmap__total {
+  font-family: var(--haz-mono);
+  font-size: var(--haz-fs-chip);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--haz-ink-3);
+}
+
+.hazmap__unit {
+  font-size: var(--haz-fs-label);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--haz-ink-3);
+}
+
+.hazmap__sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--haz-line-2);
+}
+
+.hazmap__clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-family: var(--haz-sans);
+  font-size: var(--haz-fs-chip);
+  font-weight: 600;
+  color: var(--haz-ink-2);
+  background: var(--haz-raised);
+  border: 1px solid var(--haz-line);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform var(--haz-fast) var(--haz-ease), color var(--haz-fast) linear,
+    border-color var(--haz-fast) linear;
+}
+
+.hazmap__clear:hover {
+  color: var(--haz-ink);
+  border-color: var(--haz-line-2);
+  transform: translateY(-1px);
+}
+
+.hazmap__clear:active {
+  transform: scale(0.97);
+}
+
+.hazmap__clear[hidden] {
+  display: none;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Body: map plate + channel rack                                          */
+/* ---------------------------------------------------------------------- */
+
+.hazmap__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 304px;
+  gap: 16px;
+  padding-top: 12px;
+}
+
+.hazmap__plate {
+  position: relative;
+  overflow: hidden;
+  min-height: 520px;
+  background: var(--haz-raised);
+  border: 1px solid var(--haz-line);
+  border-radius: 12px;
+}
+
+.hazmap__canvas {
+  position: absolute;
+  inset: 0;
+}
+
+/* An empty basemap should say what to do with it. Fades out the moment the
+ * first channel is switched on and never comes back while one is live. */
+.hazmap__idle {
+  position: absolute;
+  z-index: 500;
+  left: 50%;
+  top: 12px;
+  margin: 0;
+  padding: 7px 14px;
+  font-size: var(--haz-fs-chip);
+  font-weight: 600;
+  color: var(--haz-ink-2);
+  background: color-mix(in srgb, var(--haz-panel) 90%, transparent);
+  border: 1px solid var(--haz-line-2);
+  border-left: 3px solid var(--haz-signal);
+  border-radius: 999px;
+  transform: translate(-50%, 0);
+  transition: opacity var(--haz-mid) var(--haz-ease), transform var(--haz-mid) var(--haz-ease);
+  pointer-events: none;
+}
+
+.hazmap:not([data-layers="0"]) .hazmap__idle {
+  opacity: 0;
+  transform: translate(-50%, -6px);
+}
+
+/* The wheel is armed only after a click (map.ts) — say so, then get out of
+ * the way once it is. */
+.hazmap__scroll-hint {
+  position: absolute;
+  z-index: 500;
+  left: 50%;
+  bottom: 12px;
+  margin: 0;
+  padding: 5px 10px;
+  font-size: var(--haz-fs-micro);
+  font-weight: 600;
+  color: var(--haz-ink-2);
+  background: color-mix(in srgb, var(--haz-panel) 88%, transparent);
+  border: 1px solid var(--haz-line-2);
+  border-radius: 999px;
+  transform: translate(-50%, 0);
+  transition: opacity var(--haz-mid) var(--haz-ease), transform var(--haz-mid) var(--haz-ease);
+  pointer-events: none;
+}
+
+.hazmap__plate[data-armed="true"] .hazmap__scroll-hint {
+  opacity: 0;
+  transform: translate(-50%, 4px);
+}
+
+/* Ambient loading state: a hairline sweep across the top of the plate while
+ * any layer is in flight. One ambient loop, and only while it means
+ * something. */
+.hazmap__plate::after {
+  content: "";
+  position: absolute;
+  z-index: 600;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--haz-signal), transparent);
+  opacity: 0;
+  transform: translateX(-100%);
+}
+
+.hazmap[data-busy="true"] .hazmap__plate::after {
+  opacity: 1;
+  animation: haz-sweep 1.1s var(--haz-ease) infinite;
+}
+
+/* Leaflet's own surfaces, re-skinned onto the ladder above. */
+.hazmap .leaflet-container {
+  height: 100%;
+  background: var(--haz-raised);
+  font-family: var(--haz-sans);
+  font-size: var(--haz-fs-micro);
+}
+
+.hazmap .leaflet-tile-pane {
+  filter: var(--haz-tiles);
+}
+
+.hazmap .leaflet-bar a,
+.hazmap .leaflet-bar a:hover {
+  color: var(--haz-ink);
+  background: var(--haz-panel);
+  border-bottom-color: var(--haz-line);
+}
+
+.hazmap .leaflet-bar a:hover {
+  background: var(--haz-raised-2);
+}
+
+.hazmap .leaflet-bar {
+  border: 1px solid var(--haz-line-2);
+  box-shadow: none;
+}
+
+.hazmap .leaflet-control-attribution {
+  padding: 2px 8px;
+  font-size: 10px;
+  color: var(--haz-ink-3);
+  background: color-mix(in srgb, var(--haz-panel) 86%, transparent);
+}
+
+.hazmap .leaflet-control-attribution a {
+  color: var(--haz-ink-2);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Channel rack — instrument-dense: this is a scanning surface              */
+/* ---------------------------------------------------------------------- */
+
+.hazmap__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 520px;
+  padding-right: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.hazgroup__label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px;
+}
+
+.hazgroup__key {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--swatch, var(--haz-ink-3));
+}
+
+.hazgroup__count {
+  margin-left: auto;
+  font-family: var(--haz-mono);
+  font-size: var(--haz-fs-micro);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  color: var(--haz-ink-3);
+}
+
+.hazgroup__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--haz-line);
+}
+
+.hazlayer {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 2px 6px;
+  padding: 6px 6px 6px 2px;
+  border-bottom: 1px solid var(--haz-line);
+  animation: haz-rise 220ms var(--haz-ease) backwards;
+  animation-delay: calc(var(--i, 0) * 18ms);
+  transition: background-color var(--haz-fast) linear;
+}
+
+.hazlayer:hover {
+  background: var(--haz-raised);
+}
+
+/* The checkbox is real and focusable; the swatch is its painted stand-in, so
+ * the control looks like an instrument channel without losing the native
+ * keyboard and screen-reader behaviour. */
+.hazlayer__input {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  left: 2px;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.hazlayer__label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 0;
+  cursor: pointer;
+}
+
+.hazlayer__swatch {
+  position: relative;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1.5px solid var(--swatch, var(--haz-ink-3));
+  background: color-mix(in srgb, var(--swatch, var(--haz-ink-3)) 14%, transparent);
+  transition: transform var(--haz-fast) var(--haz-ease), background-color var(--haz-fast) linear;
+}
+
+/* The "on" tick is drawn, not a glyph, so it inherits the layer's own colour. */
+.hazlayer__swatch::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 0;
+  width: 4px;
+  height: 8px;
+  border: solid var(--haz-on-signal);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) scale(0);
+  transform-origin: center;
+  transition: transform var(--haz-fast) var(--haz-ease);
+}
+
+.hazlayer__name {
+  overflow: hidden;
+  font-size: var(--haz-fs-body);
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--haz-ink-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color var(--haz-fast) linear;
+}
+
+.hazlayer__status {
+  grid-column: 1;
+  font-family: var(--haz-mono);
+  font-size: var(--haz-fs-micro);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  color: var(--haz-ink-3);
+  padding-left: 22px;
+}
+
+.hazlayer__act {
+  grid-row: 1 / span 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  color: var(--haz-ink-3);
+  background: var(--haz-raised);
+  border: 1px solid var(--haz-line);
+  border-radius: 7px;
+  cursor: pointer;
+  transition: color var(--haz-fast) linear, border-color var(--haz-fast) linear,
+    transform var(--haz-fast) var(--haz-ease);
+}
+
+.hazlayer__act:hover {
+  color: var(--haz-ink);
+  border-color: var(--haz-line-2);
+  transform: translateY(-1px);
+}
+
+.hazlayer__act:active {
+  transform: scale(0.94);
+}
+
+.hazlayer__act[hidden] {
+  display: none;
+}
+
+.hazlayer__act--retry {
+  color: var(--haz-danger);
+  border-color: color-mix(in srgb, var(--haz-danger) 45%, var(--haz-line));
+}
+
+/* --- channel states ---------------------------------------------------- */
+
+.hazlayer__input:checked + .hazlayer__label .hazlayer__swatch {
+  background: var(--swatch, var(--haz-ink-3));
+  transform: scale(1.06);
+}
+
+.hazlayer__input:checked + .hazlayer__label .hazlayer__swatch::after {
+  transform: rotate(45deg) scale(1);
+}
+
+.hazlayer__input:checked + .hazlayer__label .hazlayer__name {
+  color: var(--haz-ink);
+}
+
+.hazlayer__input:focus-visible + .hazlayer__label .hazlayer__swatch,
+.hazlayer__act:focus-visible {
+  outline: 2px solid var(--haz-signal);
+  outline-offset: 2px;
+}
+
+.hazlayer[data-status="live"] {
+  box-shadow: inset 2px 0 0 var(--swatch, var(--haz-signal));
+}
+
+.hazlayer[data-status="live"] .hazlayer__status {
+  color: var(--swatch, var(--haz-ink-2));
+}
+
+/* Loading: the status line becomes a shimmering bar the width of the readout
+ * it is about to be replaced by — never a spinner, never a blank row. */
+.hazlayer[data-status="loading"] .hazlayer__status {
+  position: relative;
+  overflow: hidden;
+  width: 92px;
+  color: transparent;
+  background: var(--haz-raised-2);
+  border-radius: 999px;
+}
+
+.hazlayer[data-status="loading"] .hazlayer__status::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, var(--haz-veil), transparent);
+  transform: translateX(-100%);
+  animation: haz-sweep 1.1s var(--haz-ease) infinite;
+}
+
+.hazlayer[data-status="error"] {
+  box-shadow: inset 2px 0 0 var(--haz-danger);
+}
+
+.hazlayer[data-status="error"] .hazlayer__status {
+  overflow: hidden;
+  color: var(--haz-danger);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hazmap__credit {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  padding-top: 2px;
+  font-size: var(--haz-fs-micro);
+  line-height: 1.55;
+  color: var(--haz-ink-3);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Feature popup                                                           */
+/* ---------------------------------------------------------------------- */
+
+.hazmap .hazpop-wrap .leaflet-popup-content-wrapper {
+  padding: 0;
+  color: var(--haz-ink);
+  background: var(--haz-panel);
+  border: 1px solid var(--haz-line-2);
+  border-radius: 12px;
+  box-shadow: var(--haz-shadow);
+}
+
+.hazmap .hazpop-wrap .leaflet-popup-content {
+  margin: 0;
+  width: 260px !important;
+}
+
+.hazmap .hazpop-wrap .leaflet-popup-tip {
+  background: var(--haz-panel);
+  border: 1px solid var(--haz-line-2);
+}
+
+.hazmap .hazpop-wrap a.leaflet-popup-close-button {
+  color: var(--haz-ink-3);
+}
+
+.hazpop {
+  padding: 12px 14px;
+}
+
+.hazpop__label {
+  margin: 0;
+  font-size: var(--haz-fs-label);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--haz-ink-3);
+}
+
+.hazpop__title {
+  margin: 4px 0 8px;
+  font-size: var(--haz-fs-lead);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--haz-ink);
+}
+
+.hazpop__grid {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--haz-line);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.hazpop__row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.hazpop__row dt {
+  font-size: var(--haz-fs-label);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--haz-ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hazpop__row dd {
+  margin: 0;
+  font-family: var(--haz-mono);
+  font-size: var(--haz-fs-micro);
+  font-variant-numeric: tabular-nums;
+  color: var(--haz-ink-2);
+  overflow-wrap: anywhere;
+}
+
+.hazpop__empty {
+  margin: 0;
+  font-size: var(--haz-fs-micro);
+  color: var(--haz-ink-3);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Skeleton — shapes that match what replaces them                         */
+/* ---------------------------------------------------------------------- */
+
+.hazskel {
+  position: relative;
+  overflow: hidden;
+  display: block;
+  background: var(--haz-raised);
+  border-radius: 999px;
+}
+
+.hazskel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, var(--haz-veil), transparent);
+  transform: translateX(-100%);
+  animation: haz-sweep 1.1s var(--haz-ease) infinite;
+}
+
+.hazskel--readout {
+  width: 132px;
+  height: 28px;
+  border-radius: 6px;
+}
+
+.hazskel--plate {
+  border-radius: 12px;
+}
+
+.hazskel--row {
+  height: 16px;
+  margin: 9px 0;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Fallback when the map engine itself fails to load                       */
+/* ---------------------------------------------------------------------- */
+
+.hazmap--dead {
+  display: grid;
+  gap: 6px;
+}
+
+.hazmap__deadtext {
+  margin: 0;
+  max-width: 62ch;
+  font-size: var(--haz-fs-body);
+  color: var(--haz-ink-2);
+}
+
+@keyframes haz-rise {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes haz-sweep {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Narrow screens: the rack drops under the plate and scrolls              */
+/* ---------------------------------------------------------------------- */
+
+@media (max-width: 860px) {
+  .hazmap {
+    padding: 12px 12px 14px;
+  }
+
+  .hazmap__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .hazmap__plate {
+    min-height: 340px;
+  }
+
+  .hazmap__panel {
+    max-height: 320px;
+  }
+
+  .hazmap__readout {
+    order: 3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hazmap__plate::after,
+  .hazmap__idle,
+  .hazmap__scroll-hint,
+  .hazmap__clear,
+  .hazlayer,
+  .hazlayer__swatch,
+  .hazlayer__swatch::after,
+  .hazlayer__name,
+  .hazlayer__act,
+  .hazskel::after,
+  .hazlayer[data-status="loading"] .hazlayer__status::after {
+    transition-duration: 1ms;
+    animation: none;
+  }
+}
