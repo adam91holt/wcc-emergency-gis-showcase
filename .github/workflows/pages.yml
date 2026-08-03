@@ -4,12 +4,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Least privilege for the build; the Pages deployment needs to write the
-# deployment and mint an OIDC token for actions/deploy-pages.
+# Workflow-wide default is read-only; only the deploy job needs to write a
+# Pages deployment and mint an OIDC token, so those scopes are granted on
+# that job specifically (below) rather than here.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 # Only one Pages deployment at a time. In-progress production deploys are
 # allowed to finish rather than being cancelled, so the live site is never
@@ -38,6 +37,9 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
