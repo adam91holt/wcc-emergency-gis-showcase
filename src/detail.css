@@ -163,6 +163,14 @@
 
 .dossier__title {
   margin: 8px 0 6px;
+  /* Reset the page-level `section h2` divider (src/style.css): that rule is
+   * authored for the catalogue's generic section headings, and its
+   * hairline + gap would otherwise leak in here uninvited, competing with
+   * this panel's own hierarchy (the spec table already owns a border-top
+   * a few lines down). If the dossier ever wants its own divider under the
+   * title, it should opt in explicitly with var(--det-line). */
+  border-bottom: 0;
+  padding-bottom: 0;
   font-size: var(--det-fs-title);
   font-weight: 700;
   line-height: 1.2;
@@ -172,11 +180,13 @@
 
 .dossier__code {
   display: inline-block;
+  max-width: 100%;
   margin: 0;
   font-family: var(--det-mono);
   font-size: var(--det-fs-micro);
   font-weight: 400;
   color: var(--det-ink-3);
+  overflow-wrap: anywhere;
 }
 
 .dossier__close {
