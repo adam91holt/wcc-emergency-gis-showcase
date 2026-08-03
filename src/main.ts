@@ -9,6 +9,7 @@
 // from here.
 import { byTheme, label, catalogue, type Dataset } from "./catalogue";
 import { getState, subscribe, type RouteState } from "./router";
+import renderDetail from "./detail";
 import renderFilters, {
   applyFilters,
   filterStateFromRoute,
@@ -146,6 +147,7 @@ function boot(): void {
   document.querySelector<HTMLElement>("#total")!.textContent = String(catalogue.counts.total);
   wireCardList(app);
   registerMount("filters", renderFilters);
+  registerMount("detail", renderDetail);
   renderCatalogue(getState());
   onSelectionChange(highlightSelection);
   subscribe((state) => {

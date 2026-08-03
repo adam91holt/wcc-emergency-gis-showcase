@@ -1,0 +1,626 @@
+/* Dataset dossier — the detail surface for src/detail.ts.
+ *
+ * Concept, continuing the discovery console's field-ops instrument language
+ * (src/filters.css): the console is the panel you scan, this is the dossier
+ * you pull out of it. Same signal rail down the left edge, same hairline
+ * rules and tiny tracked labels, same mono readout for anything numeric — but
+ * where the console is all facets, the dossier is a record: a display-weight
+ * title and a breathing description up top for reading, a dense hairline spec
+ * table under it for scanning, and at the bottom a *live probe* strip that
+ * goes out to the dataset's own ArcGIS layer and reports back with a status
+ * LED, a tabular feature count and the layer's real field names.
+ *
+ * Dark-first (authored for dark, ported to light at the end of the token
+ * block). The one owned accent is the app's --accent, inherited here as
+ * --det-signal; no component below hardcodes a colour. */
+
+:root {
+  /* Surface ladder: page (--bg) → panel → raised → raised-2, 4–6px steps. */
+  --det-panel: #101a2c;
+  --det-raised: #16233a;
+  --det-raised-2: #1d2c47;
+  --det-line: #23324c;
+  --det-line-2: #2f4364;
+
+  /* Off-white ink stepped down in luminance, not opacity. */
+  --det-ink: #e7edf8;
+  --det-ink-2: #a4b5d0;
+  --det-ink-3: #6f819f;
+
+  --det-signal: var(--accent);
+  --det-on-signal: #061523;
+  --det-warn: #f8846b;
+  --det-warn-soft: rgba(248, 132, 107, 0.14);
+  --det-veil: rgba(231, 237, 248, 0.07);
+
+  /* Paired type: sans for prose and chrome, mono for ids, numbers, fields. */
+  --det-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --det-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+
+  /* Type scale — 7 sizes, 3 weights (400/600/700), held to across the panel. */
+  --det-fs-label: 10.5px;
+  --det-fs-micro: 11px;
+  --det-fs-chip: 12.5px;
+  --det-fs-body: 13.5px;
+  --det-fs-lead: 15px;
+  --det-fs-title: 21px;
+  --det-fs-readout: 26px;
+
+  --det-fast: 120ms;
+  --det-mid: 200ms;
+  --det-ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --det-panel: #ffffff;
+    --det-raised: #f1f5fa;
+    --det-raised-2: #e6edf6;
+    --det-line: #dde5ef;
+    --det-line-2: #c2cfe0;
+    --det-ink: #0f172a;
+    --det-ink-2: #48586f;
+    --det-ink-3: #74839a;
+    --det-on-signal: #f7fbff;
+    --det-warn: #b3391f;
+    --det-warn-soft: rgba(179, 57, 31, 0.09);
+    --det-veil: rgba(15, 23, 42, 0.05);
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Dossier shell                                                           */
+/* ---------------------------------------------------------------------- */
+
+.dossier {
+  position: relative;
+  overflow: hidden;
+  margin: 16px 0 20px;
+  padding: 16px 20px 20px 24px;
+  background: var(--det-panel);
+  border: 1px solid var(--det-line);
+  border-radius: 14px;
+  font-family: var(--det-sans);
+  color: var(--det-ink);
+  /* `backwards`, not `both`: a forwards fill would keep overriding the
+   * interactive transforms on the controls inside. */
+  animation: det-rise var(--det-mid) var(--det-ease) backwards;
+}
+
+.dossier__rail {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--det-signal);
+  transform: scaleY(1);
+  transform-origin: top center;
+}
+
+.dossier--empty .dossier__rail {
+  opacity: 0.35;
+  transform: scaleY(0.16);
+}
+
+.dossier__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.dossier__ident {
+  min-width: 0;
+  flex: 1;
+}
+
+/* The tiny uppercase tracked label, same move as the console's. */
+.dossier__eyebrow,
+.spec__key,
+.probe__label {
+  margin: 0;
+  font-size: var(--det-fs-label);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--det-ink-3);
+}
+
+.dossier__eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dossier__scope {
+  padding: 2px 6px;
+  color: var(--det-signal);
+  background: color-mix(in srgb, var(--det-signal) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--det-signal) 40%, transparent);
+  border-radius: 4px;
+}
+
+.dossier__title {
+  margin: 8px 0 6px;
+  font-size: var(--det-fs-title);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--det-ink);
+}
+
+.dossier__code {
+  display: inline-block;
+  margin: 0;
+  font-family: var(--det-mono);
+  font-size: var(--det-fs-micro);
+  font-weight: 400;
+  color: var(--det-ink-3);
+}
+
+.dossier__close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  color: var(--det-ink-2);
+  background: var(--det-raised);
+  border: 1px solid var(--det-line);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform var(--det-fast) var(--det-ease), color var(--det-fast) linear,
+    border-color var(--det-fast) linear;
+}
+
+.dossier__close:hover {
+  color: var(--det-ink);
+  border-color: var(--det-line-2);
+  transform: translateY(-1px);
+}
+
+.dossier__close:active {
+  transform: scale(0.94);
+}
+
+/* Reading surface: this one breathes. */
+.dossier__desc {
+  max-width: 68ch;
+  margin: 14px 0 0;
+  font-size: var(--det-fs-lead);
+  font-weight: 400;
+  line-height: 1.65;
+  color: var(--det-ink-2);
+}
+
+.dossier__nil {
+  color: var(--det-ink-3);
+}
+
+.dossier__lede {
+  margin: 10px 0 0;
+  font-size: var(--det-fs-lead);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--det-ink);
+}
+
+.dossier__hint {
+  max-width: 62ch;
+  margin: 6px 0 0;
+  font-size: var(--det-fs-body);
+  font-weight: 400;
+  line-height: 1.7;
+  color: var(--det-ink-2);
+}
+
+.dossier__hint kbd {
+  display: inline-block;
+  min-width: 18px;
+  margin: 0 1px;
+  padding: 1px 5px;
+  font-family: var(--det-mono);
+  font-size: 10px;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--det-ink-2);
+  background: var(--det-raised);
+  border: 1px solid var(--det-line-2);
+  border-radius: 4px;
+}
+
+.dossier--empty .dossier__code {
+  padding: 1px 5px;
+  color: var(--det-ink-2);
+  background: var(--det-raised);
+  border: 1px solid var(--det-line);
+  border-radius: 4px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Spec table — instrument-dense: this is a surface for scanning            */
+/* ---------------------------------------------------------------------- */
+
+.spec {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 24px;
+  margin: 16px 0 0;
+  border-top: 1px solid var(--det-line);
+}
+
+.spec__row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--det-line);
+}
+
+.spec__key {
+  flex: none;
+  width: 76px;
+}
+
+.spec__val {
+  min-width: 0;
+  margin: 0;
+  font-size: var(--det-fs-chip);
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--det-ink);
+  overflow-wrap: anywhere;
+}
+
+.spec__val--mono {
+  font-family: var(--det-mono);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  color: var(--det-ink-2);
+}
+
+.dossier__source {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 7px 12px;
+  font-size: var(--det-fs-chip);
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--det-on-signal);
+  background: var(--det-signal);
+  border-radius: 8px;
+  transition: transform var(--det-fast) var(--det-ease), opacity var(--det-fast) linear;
+}
+
+.dossier__source:hover {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+.dossier__source:active {
+  transform: scale(0.97);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Live probe strip                                                        */
+/* ---------------------------------------------------------------------- */
+
+.probe {
+  margin-top: 18px;
+  padding: 12px 14px 14px;
+  background: var(--det-raised);
+  border: 1px solid var(--det-line);
+  border-radius: 12px;
+}
+
+.probe__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--det-line);
+}
+
+.probe__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+}
+
+.probe__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  font-family: var(--det-mono);
+  font-size: var(--det-fs-micro);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--det-ink-3);
+  background: var(--det-panel);
+  border: 1px solid var(--det-line);
+  border-radius: 999px;
+}
+
+.probe__led {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.5;
+}
+
+.probe__status[data-status="loading"] {
+  color: var(--det-signal);
+}
+
+.probe__status[data-status="loading"] .probe__led {
+  opacity: 1;
+  animation: det-blink 1.1s var(--det-ease) infinite;
+}
+
+.probe__status[data-status="ready"] {
+  color: var(--det-signal);
+  border-color: color-mix(in srgb, var(--det-signal) 45%, transparent);
+}
+
+.probe__status[data-status="ready"] .probe__led {
+  opacity: 1;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--det-signal) 22%, transparent);
+}
+
+.probe__status[data-status="error"] {
+  color: var(--det-warn);
+  border-color: color-mix(in srgb, var(--det-warn) 45%, transparent);
+}
+
+.probe__status[data-status="error"] .probe__led {
+  opacity: 1;
+}
+
+.probe__body {
+  animation: det-rise var(--det-fast) var(--det-ease) backwards;
+}
+
+.probe__readout {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 12px 0 0;
+}
+
+.probe__count {
+  font-family: var(--det-mono);
+  font-size: var(--det-fs-readout);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--det-ink);
+}
+
+.probe__count--nil {
+  color: var(--det-ink-3);
+}
+
+.probe__unit {
+  font-size: var(--det-fs-label);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--det-ink-3);
+}
+
+.spec--probe {
+  margin-top: 12px;
+  border-top: 0;
+}
+
+.spec--probe .spec__row:first-child,
+.spec--probe .spec__row:nth-child(2) {
+  border-top: 1px solid var(--det-line);
+}
+
+/* Field chips: the layer's real attribute names, mono, dense. */
+.probe__fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 12px;
+}
+
+.fld {
+  padding: 3px 7px;
+  font-family: var(--det-mono);
+  font-size: var(--det-fs-micro);
+  font-weight: 400;
+  color: var(--det-ink-2);
+  background: var(--det-raised-2);
+  border: 1px solid var(--det-line);
+  border-radius: 5px;
+}
+
+.fld--more {
+  color: var(--det-ink-3);
+  background: none;
+  border-style: dashed;
+}
+
+.probe__note,
+.probe__error,
+.dossier__note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 68ch;
+  margin: 12px 0 0;
+  font-size: var(--det-fs-body);
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--det-ink-2);
+}
+
+.probe__note .ico,
+.dossier__note .ico {
+  margin-top: 2px;
+  color: var(--det-ink-3);
+}
+
+.probe__error {
+  padding: 10px 12px;
+  color: var(--det-ink);
+  background: var(--det-warn-soft);
+  border: 1px solid color-mix(in srgb, var(--det-warn) 35%, transparent);
+  border-radius: 8px;
+}
+
+.probe__error .ico {
+  margin-top: 2px;
+  color: var(--det-warn);
+}
+
+.btn-probe {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 6px 11px;
+  font-family: var(--det-sans);
+  font-size: var(--det-fs-chip);
+  font-weight: 600;
+  color: var(--det-ink);
+  background: var(--det-raised-2);
+  border: 1px solid var(--det-line-2);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform var(--det-fast) var(--det-ease), color var(--det-fast) linear,
+    border-color var(--det-fast) linear;
+}
+
+.btn-probe:hover {
+  color: var(--det-signal);
+  border-color: var(--det-signal);
+  transform: translateY(-1px);
+}
+
+.btn-probe:active {
+  transform: scale(0.97);
+}
+
+.dossier__close:focus-visible,
+.dossier__source:focus-visible,
+.btn-probe:focus-visible {
+  outline: 2px solid var(--det-signal);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Skeleton — shapes matching the readout/specs/chips they're replaced by   */
+/* ---------------------------------------------------------------------- */
+
+.dsk {
+  position: relative;
+  overflow: hidden;
+  display: inline-block;
+  background: var(--det-raised-2);
+  border-radius: 6px;
+}
+
+.dsk::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, var(--det-veil), transparent);
+  transform: translateX(-100%);
+  animation: det-sweep 1.1s var(--det-ease) infinite;
+}
+
+.dsk--readout {
+  width: 148px;
+  height: 26px;
+  margin-top: 12px;
+}
+
+.dsk--val {
+  width: 84px;
+  height: 12px;
+  border-radius: 4px;
+}
+
+.dsk--wide {
+  width: 176px;
+}
+
+.dsk--field {
+  height: 21px;
+  border-radius: 5px;
+}
+
+@keyframes det-rise {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes det-sweep {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes det-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Narrow screens: the spec table goes single-column, padding tightens      */
+/* ---------------------------------------------------------------------- */
+
+@media (max-width: 760px) {
+  .dossier {
+    padding: 14px 14px 16px 18px;
+  }
+
+  .spec {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .spec--probe .spec__row:nth-child(2) {
+    border-top: 0;
+  }
+
+  .dossier__title {
+    font-size: 18px;
+  }
+
+  .probe__head {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dossier,
+  .dossier__close,
+  .dossier__source,
+  .dossier__rail,
+  .probe__body,
+  .probe__led,
+  .btn-probe,
+  .dsk::after {
+    transition-duration: 1ms;
+    animation: none;
+  }
+}
