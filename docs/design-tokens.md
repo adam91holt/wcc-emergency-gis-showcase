@@ -109,16 +109,36 @@ third: six accents means zero accents.
 
 ### Hazard channels
 
-One hue per `Dataset["theme"]` from `src/catalogue.ts`. Token names match the
-theme key exactly, so a module can build the variable name from data:
+One hue per non-null `Dataset["theme"]` from `src/catalogue.ts`. Token names
+match the theme key exactly, so a module can build the variable name from
+data:
 
 ```css
 .layer { border-inline-start-color: var(--hazard-flood); }
 ```
 
+**`Dataset["theme"]` is nullable.** The 11 national-scope rows (`scope ===
+"national"`) carry `theme: null` — `byTheme()` in `src/catalogue.ts` buckets
+them under a synthetic `"Uncategorised"` group precisely because they have no
+theme, and `src/catalogue.selectors.test.ts` asserts this count (23 wcc + 33
+regional + 11 national; the `themes()` selector's total is smaller than
+`datasets().length` for exactly this reason). Building a token name from
+`dataset.theme` without accounting for `null` produces `--hazard-null`, which
+does not exist — always fall back explicitly:
+
 ```ts
-el.style.setProperty("--channel-color", `var(--hazard-${dataset.theme})`);
+el.style.setProperty(
+  "--channel-color",
+  `var(--hazard-${dataset.theme ?? "other"})`,
+);
 ```
+
+`--hazard-other` is the intended home for anything outside the seven named
+themes, so route null-theme (uncategorised/national) rows there rather than
+inventing an eighth hue — the hero's channel index and the masthead's
+"Channels: 7" figure both describe the seven themed channels only, and
+`--hazard-other` is what keeps an unthemed row visually consistent with them
+instead of falling through to an undefined custom property.
 
 `--hazard-coastal_inundation`, `--hazard-flood`, `--hazard-landslide`,
 `--hazard-earthquake`, `--hazard-sea_level_rise`, `--hazard-climate`,

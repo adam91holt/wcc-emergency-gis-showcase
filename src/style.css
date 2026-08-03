@@ -126,7 +126,10 @@ button {
 :focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
-  border-radius: var(--radius-sm);
+  /* No border-radius here: this rule must only shape the ring, never the
+   * control underneath it. Modern browsers already clip an outline to the
+   * element's own border-radius, so every control keeps its real corners —
+   * 10px on a button, full on a badge/pill — through focus and blur alike. */
 }
 
 /* ====================================================================== *
@@ -467,6 +470,7 @@ main > *,
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  min-height: var(--tap-min);
   color: inherit;
   text-decoration: none;
 }
@@ -871,7 +875,13 @@ main > * + * {
   border-inline-start: var(--edge-width) solid var(--scope-color, var(--border-strong));
   border-radius: var(--radius-md);
   transition: var(--transition-colors), var(--transition-transform);
-  animation: rise var(--duration-base) var(--ease-out) both;
+  /* `backwards` (not `both`): the from-state needs to hold during the
+   * staggered entry delay, but once the animation completes it must stop
+   * contributing to the cascade. The Animations cascade origin outranks a
+   * normal author declaration regardless of specificity, so a `forwards`
+   * (or `both`) fill would pin `transform: translateY(0)` here forever and
+   * permanently defeat `.ds:hover`'s own `transform` below. */
+  animation: rise var(--duration-base) var(--ease-out) backwards;
 }
 
 .ds[data-scope="wcc"] {

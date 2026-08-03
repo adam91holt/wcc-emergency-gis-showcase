@@ -228,7 +228,7 @@
     --text-secondary: #454e58; /*  7.5:1 */
     --text-tertiary: #5c6672; /*  5.2:1 on surface-0, 5.1:1 on surface-3 */
 
-    --accent: #a3540a; /* 5.0:1 on surface-0, 5.5:1 on surface-2 */
+    --accent: #a3540a; /* 4.85:1 on surface-0, 5.5:1 on surface-2 */
     --accent-hover: #8a4708; /* darker reads as "pressed" on light */
     --accent-pressed: #703805;
     --accent-fg: #ffffff; /* 5.5:1 on --accent */

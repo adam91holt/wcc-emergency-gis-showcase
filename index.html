@@ -72,6 +72,19 @@
             }
             sync(button);
           });
+
+          // Keep the toggle's aria-pressed/aria-label truthful when the OS
+          // preference changes live (no reload) and there is no explicit
+          // data-theme override in play — the CSS already repaints instantly
+          // via the same media query, so the accessible state must track it.
+          if (window.matchMedia) {
+            window
+              .matchMedia("(prefers-color-scheme: light)")
+              .addEventListener("change", function () {
+                if (root.getAttribute("data-theme")) return;
+                sync(button);
+              });
+          }
         });
       })();
     </script>
