@@ -45,9 +45,8 @@ export function resolveLayerIndex(d: Dataset): number | null {
  * than pulling every geometry down just to length-check it. Null for the same
  * datasets layerQueryUrl returns null for. */
 export function featureCountUrl(d: Dataset): string | null {
-  if (!d.feature_queryable || !d.service_root) return null;
+  if (previewUnavailableReason(d) !== null) return null;
   const layer = resolveLayerIndex(d);
-  if (layer == null) return null;
   return `${d.service_root}/${layer}/query?where=1%3D1&returnCountOnly=true&f=json`;
 }
 
@@ -55,9 +54,8 @@ export function featureCountUrl(d: Dataset): string | null {
  * geometry type and the field list this panel shows. Same guard and same
  * layer-index fallback order as featureCountUrl. */
 export function layerFieldsUrl(d: Dataset): string | null {
-  if (!d.feature_queryable || !d.service_root) return null;
+  if (previewUnavailableReason(d) !== null) return null;
   const layer = resolveLayerIndex(d);
-  if (layer == null) return null;
   return `${d.service_root}/${layer}?f=json`;
 }
 
@@ -65,15 +63,18 @@ export function layerFieldsUrl(d: Dataset): string | null {
  * of layerFieldsUrl, offered as a link so a reader can check our numbers
  * against the service itself. */
 export function layerPageUrl(d: Dataset): string | null {
-  if (!d.feature_queryable || !d.service_root) return null;
+  if (previewUnavailableReason(d) !== null) return null;
   const layer = resolveLayerIndex(d);
-  if (layer == null) return null;
   return `${d.service_root}/${layer}`;
 }
 
 /** Why this dataset has no live preview, or null when it can be probed. The
- * order matters: a raster row is also `feature_queryable: false`, and "this is
- * imagery" is a far better explanation than "not queryable". */
+ * order matters: "this is imagery" is a far better explanation than "not
+ * queryable" for a raster row — and this check is the single source of truth
+ * for probeability, so featureCountUrl/layerFieldsUrl/layerPageUrl delegate to
+ * it rather than re-deriving the same guard, which would let the two silently
+ * disagree if an upstream row ever combined `raster_only: true` with
+ * `feature_queryable: true`. */
 export function previewUnavailableReason(d: Dataset): string | null {
   if (!d.service_root) {
     return "This record links to a portal or web page rather than an ArcGIS service, so there is nothing to query.";
@@ -194,8 +195,12 @@ export function metadataRows(d: Dataset): MetaRow[] {
   const layer = resolveLayerIndex(d);
   const service =
     d.server_type == null ? null : layer == null ? d.server_type : `${d.server_type} · layer ${layer}`;
+  // Same fallback catalogue.byTheme() already groups these rows under
+  // ("Uncategorised") — this row and the panel's own theme tag (detailModel)
+  // must read the same way for the same dataset, so this is not a "missing
+  // value" the way an absent year or coverage is.
   return [
-    row("theme", "Theme", d.theme_label || d.theme),
+    row("theme", "Theme", d.theme_label || d.theme || "Uncategorised"),
     row("scope", "Scope", SCOPE_LABEL[d.scope]),
     row("authority", "Authority", d.authority),
     row("year", "Year", d.year, true),
@@ -302,14 +307,23 @@ export interface PreviewData {
 }
 
 const previewCache = new Map<string, PreviewData>();
-const inflight = new Map<string, Promise<PreviewData>>();
+const inflight = new Map<string, { promise: Promise<PreviewData>; controller: AbortController }>();
+
+/** These are the councils' own live ArcGIS endpoints — occasionally slow,
+ * briefly offline, or unreachable from a given network. Without a bound, a
+ * stalled request would leave the panel's skeleton spinning forever instead
+ * of ever reaching the "fetch-error" state the ticket asks for. */
+const PROBE_TIMEOUT_MS = 15_000;
 
 function errorText(error: unknown): string {
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return "the request timed out";
+  }
   return error instanceof Error && error.message ? error.message : "Request failed";
 }
 
-async function fetchJson(url: string): Promise<unknown> {
-  const res = await fetch(url);
+async function fetchJson(url: string, signal: AbortSignal): Promise<unknown> {
+  const res = await fetch(url, { signal });
   if (!res.ok) throw new Error(`service responded ${res.status}`);
   let body: unknown;
   try {
@@ -325,13 +339,18 @@ async function fetchJson(url: string): Promise<unknown> {
 /** Probe one dataset: the count and the layer document in parallel, each
  * allowed to fail on its own. Only when *both* fail is the probe an error —
  * a service that answers the schema request but times out the count is still
- * worth showing. */
-async function probe(d: Dataset): Promise<PreviewData> {
+ * worth showing. `signal` aborts both requests together, whether that's the
+ * probe's own timeout or the caller cancelling because the selection moved
+ * on. */
+async function probe(d: Dataset, signal: AbortSignal): Promise<PreviewData> {
   const countUrl = featureCountUrl(d);
   const fieldsUrl = layerFieldsUrl(d);
   if (!countUrl || !fieldsUrl) throw new Error("no queryable layer");
 
-  const [countResult, layerResult] = await Promise.allSettled([fetchJson(countUrl), fetchJson(fieldsUrl)]);
+  const [countResult, layerResult] = await Promise.allSettled([
+    fetchJson(countUrl, signal),
+    fetchJson(fieldsUrl, signal),
+  ]);
 
   let count: number | null = null;
   let countError: string | null = null;
@@ -343,10 +362,12 @@ async function probe(d: Dataset): Promise<PreviewData> {
   }
 
   let info: LayerInfo = { name: null, geometry: null, fields: [] };
+  // Only a genuine fetch/parse failure earns a note here — a layer that
+  // legitimately answers with zero fields is readyHtml's own "answered, but
+  // reports no fields" branch to explain, not this one too.
   let fieldsError: string | null = null;
   if (layerResult.status === "fulfilled") {
     info = parseLayerInfo(layerResult.value);
-    if (info.fields.length === 0) fieldsError = "the layer reported no fields";
   } else {
     fieldsError = errorText(layerResult.reason);
   }
@@ -360,26 +381,44 @@ async function probe(d: Dataset): Promise<PreviewData> {
   return { count, info, note };
 }
 
+/** Abort and drop whatever request is in flight for this id, if any — called
+ * when the user navigates away before it settled, so an abandoned selection
+ * doesn't keep a request running (and, per its own timeout, running forever
+ * if the network never answers). */
+function abortInflight(id: string): void {
+  inflight.get(id)?.controller.abort();
+  inflight.delete(id);
+}
+
 /** Load (and memoise) a dataset's preview. Concurrent probes of the same id
  * share one pair of requests; a failed probe is never cached, so Re-probe
- * really re-probes. */
+ * really re-probes. Bounded by PROBE_TIMEOUT_MS so a stalled service always
+ * eventually reaches the error state. */
 function loadPreview(d: Dataset, refresh = false): Promise<PreviewData> {
-  if (refresh) previewCache.delete(d.id);
+  if (refresh) {
+    previewCache.delete(d.id);
+    abortInflight(d.id);
+  }
   const cached = previewCache.get(d.id);
   if (cached) return Promise.resolve(cached);
   const existing = inflight.get(d.id);
-  if (existing && !refresh) return existing;
-  const request = probe(d)
+  if (existing) return existing.promise;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new DOMException("Timed out", "AbortError")), PROBE_TIMEOUT_MS);
+  const request = probe(d, controller.signal)
     .then((data) => {
+      clearTimeout(timer);
       previewCache.set(d.id, data);
       inflight.delete(d.id);
       return data;
     })
     .catch((error) => {
+      clearTimeout(timer);
       inflight.delete(d.id);
       throw error;
     });
-  inflight.set(d.id, request);
+  inflight.set(d.id, { promise: request, controller });
   return request;
 }
 
@@ -637,6 +676,11 @@ export default function renderDetail(root: HTMLElement, state: RouteState): void
 
   const id = state.dataset;
   if (view && view.root === root && view.id === id) return;
+
+  // Navigating away from a dataset whose probe hadn't settled yet: cancel the
+  // in-flight requests rather than leaving them running for a selection
+  // nobody is looking at anymore.
+  if (view?.id && view.id !== id) abortInflight(view.id);
 
   const dataset = id ? findById(id) ?? null : null;
   if (!id) {
