@@ -19,11 +19,13 @@ import renderFilters, {
 import renderMap from "./map";
 import renderDetail from "./detail";
 import renderCharts from "./charts";
+import renderScenarios from "./scenarios";
 
-/** The four stable mount points declared in index.html, one per feature ticket. */
-export type MountId = "filters" | "map" | "detail" | "charts";
+/** The stable mount points declared in index.html, one per feature ticket. */
+export type MountId = "scenarios" | "filters" | "map" | "detail" | "charts";
 
 const MOUNT_SELECTORS: Record<MountId, string> = {
+  scenarios: "#scenarios-root",
   filters: "#filters-root",
   map: "#map-root",
   detail: "#detail-root",
@@ -148,6 +150,7 @@ function boot(): void {
   if (!app) return;
   document.querySelector<HTMLElement>("#total")!.textContent = String(catalogue.counts.total);
   wireCardList(app);
+  registerMount("scenarios", renderScenarios);
   registerMount("filters", renderFilters);
   registerMount("map", renderMap);
   registerMount("detail", renderDetail);

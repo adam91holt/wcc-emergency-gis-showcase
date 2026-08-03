@@ -1,0 +1,458 @@
+/* Scenario briefings — the rack of curated hazard quick-views for
+ * src/scenarios.ts.
+ *
+ * Concept: the pre-set briefings clipped above a dispatcher's console. The
+ * discovery console below reports what is *in view*; this rack reports what
+ * story is *loaded*, so it is drawn as a row of small instrument cards —
+ * hairline-ruled, dense, each with a glyph, a one-line brief and a live
+ * "2 / 4 layers" meter that fills as its layers light up on the map. A
+ * briefing that is half-lit says so; a loaded one runs its signal edge.
+ *
+ * Dark-first (authored dark, ported to light at the bottom of the token
+ * block). The panel surface and hairline hang off the app's own --card /
+ * --line tokens and every live colour is --accent from style.css — the
+ * product's one owned accent. No component below hardcodes a colour. */
+
+:root {
+  /* Surface ladder: page (--bg) → panel (--card) → raised → raised-2, in
+   * 4–6px luminance steps. Never pure black, never flat grey. */
+  --scn-panel: var(--card);
+  --scn-raised: #1a2740;
+  --scn-raised-2: #22314f;
+  --scn-line: var(--line);
+  --scn-line-2: #33456a;
+
+  /* Off-white ink, stepped down in luminance rather than opacity. */
+  --scn-ink: #e7edf8;
+  --scn-ink-2: #a4b5d0;
+  --scn-ink-3: #6f819f;
+
+  /* One owned accent, inherited from the app token. */
+  --scn-signal: var(--accent);
+  --scn-on-signal: #061523;
+  --scn-veil: rgba(231, 237, 248, 0.07);
+  --scn-shadow: 0 14px 30px rgba(2, 8, 20, 0.45);
+
+  /* Paired type: sans for chrome, mono for every number and unit. */
+  --scn-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --scn-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+
+  /* Type scale — 5 sizes, 3 weights (400/600/700), held to across the rack. */
+  --scn-fs-label: 10.5px;
+  --scn-fs-micro: 11px;
+  --scn-fs-desc: 11.5px;
+  --scn-fs-title: 13.5px;
+  --scn-fs-readout: 15px;
+
+  --scn-fast: 120ms;
+  --scn-mid: 220ms;
+  --scn-ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --scn-raised: #f1f5fa;
+    --scn-raised-2: #e6edf6;
+    --scn-line-2: #c2cfe0;
+    --scn-ink: #0f172a;
+    --scn-ink-2: #48586f;
+    --scn-ink-3: #74839a;
+    --scn-on-signal: #f7fbff;
+    --scn-veil: rgba(15, 23, 42, 0.05);
+    --scn-shadow: 0 14px 30px rgba(15, 23, 42, 0.12);
+  }
+}
+
+.scn-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Rack shell                                                              */
+/* ---------------------------------------------------------------------- */
+
+.playbook {
+  position: relative;
+  margin: 16px 0 0;
+  padding: 12px 14px 14px;
+  font-family: var(--scn-sans);
+  color: var(--scn-ink);
+  background: var(--scn-panel);
+  border: 1px solid var(--scn-line);
+  border-radius: 14px;
+}
+
+.playbook__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 4px 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--scn-line);
+}
+
+.playbook__ident {
+  min-width: 0;
+  margin-right: auto;
+}
+
+/* Tiny uppercase tracked label — same register as the console below. */
+.playbook__label {
+  margin: 0;
+  font-size: var(--scn-fs-label);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--scn-ink-3);
+}
+
+.playbook__hint {
+  margin: 4px 0 0;
+  font-size: var(--scn-fs-micro);
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--scn-ink-3);
+}
+
+.playbook__readout {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+}
+
+.playbook__drawn {
+  font-family: var(--scn-mono);
+  font-size: var(--scn-fs-readout);
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--scn-ink-3);
+  transition: color var(--scn-mid) linear;
+}
+
+.playbook[data-loaded="true"] .playbook__drawn {
+  color: var(--scn-signal);
+}
+
+.playbook__unit {
+  font-size: var(--scn-fs-label);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--scn-ink-3);
+}
+
+/* Dense by intent: this is a scanning surface, six briefings compared at a
+ * glance, not a page of prose. */
+.playbook__rack {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(212px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Briefing card                                                           */
+/* ---------------------------------------------------------------------- */
+
+.scen {
+  position: relative;
+  overflow: hidden;
+  display: block;
+  width: 100%;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: var(--scn-raised);
+  border: 1px solid var(--scn-line);
+  border-radius: 10px;
+  cursor: pointer;
+  transition:
+    transform var(--scn-fast) var(--scn-ease),
+    border-color var(--scn-fast) linear,
+    background-color var(--scn-fast) linear,
+    box-shadow var(--scn-fast) linear;
+}
+
+.scen:hover {
+  transform: translateY(-2px);
+  background: var(--scn-raised-2);
+  border-color: var(--scn-line-2);
+  box-shadow: var(--scn-shadow);
+}
+
+.scen:active {
+  transform: translateY(0) scale(0.99);
+}
+
+.scen:focus-visible {
+  outline: 2px solid var(--scn-signal);
+  outline-offset: 2px;
+}
+
+/* The entrance animation lives on the inner frame, never on the button:
+ * a filled transform on .scen would keep overriding the hover lift above. */
+.scen__frame {
+  display: grid;
+  gap: 6px;
+  padding: 9px 11px 10px;
+  animation: scn-rise var(--scn-mid) var(--scn-ease) backwards;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}
+
+.scen__top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.scen__glyph {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  color: var(--scn-ink-2);
+  background: var(--scn-panel);
+  border: 1px solid var(--scn-line);
+  border-radius: 8px;
+  transition:
+    color var(--scn-fast) linear,
+    background-color var(--scn-fast) linear,
+    border-color var(--scn-fast) linear;
+}
+
+.scen__glyph .ico {
+  display: block;
+}
+
+.scen__title {
+  min-width: 0;
+  font-size: var(--scn-fs-title);
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--scn-ink);
+  transition: color var(--scn-fast) linear;
+}
+
+.scen__desc {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  font-size: var(--scn-fs-desc);
+  font-weight: 400;
+  line-height: 1.45;
+  /* --scn-ink-3 is ~3.5–3.8:1 against --scn-raised in both schemes — under
+   * the 4.5:1 WCAG AA floor for normal-size text, and this is the one line of
+   * real reading copy in the card (not a label/unit). --scn-ink-2 clears
+   * 6.6:1+ in both schemes. */
+  color: var(--scn-ink-2);
+}
+
+.scen__foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 1px;
+}
+
+.scen__readout {
+  font-family: var(--scn-mono);
+  font-size: var(--scn-fs-micro);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--scn-ink-2);
+}
+
+.scen__of {
+  font-weight: 400;
+  color: var(--scn-ink-3);
+}
+
+.scen__unit {
+  font-size: var(--scn-fs-label);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--scn-ink-3);
+}
+
+/* The live instrument: how much of this briefing is currently drawn. Filled
+ * with scaleX so it animates on the compositor, never on layout. */
+.scen__meter {
+  flex: 1;
+  min-width: 24px;
+  height: 3px;
+  margin-left: 2px;
+  overflow: hidden;
+  background: var(--scn-veil);
+  border-radius: 999px;
+}
+
+.scen__meter-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--scn-signal);
+  border-radius: inherit;
+  opacity: 0.55;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition:
+    transform var(--scn-mid) var(--scn-ease),
+    opacity var(--scn-fast) linear;
+}
+
+/* Partly lit: the user has some of this picture on, by hand or from another
+ * briefing. Visibly in-between — not idle, not loaded. */
+.scen[data-state="partial"] {
+  border-color: var(--scn-line-2);
+}
+
+.scen[data-state="partial"] .scen__readout {
+  color: var(--scn-ink);
+}
+
+/* Loaded: signal edge down the left, glyph fills, title takes the accent. */
+.scen[data-state="live"] {
+  background: color-mix(in srgb, var(--scn-signal) 10%, var(--scn-raised));
+  border-color: var(--scn-signal);
+  box-shadow: inset 3px 0 0 var(--scn-signal);
+}
+
+.scen[data-state="live"] .scen__frame {
+  padding-left: 13px;
+}
+
+.scen[data-state="live"] .scen__glyph {
+  color: var(--scn-on-signal);
+  background: var(--scn-signal);
+  border-color: var(--scn-signal);
+}
+
+/* The lock-in beat, fired by scenarios.ts when a briefing goes live. */
+.scen__glyph.is-armed {
+  animation: scn-pop 280ms var(--scn-ease);
+}
+
+.scen[data-state="live"] .scen__title {
+  color: var(--scn-signal);
+}
+
+.scen[data-state="live"] .scen__readout,
+.scen[data-state="live"] .scen__unit {
+  color: var(--scn-signal);
+}
+
+.scen[data-state="live"] .scen__meter-fill {
+  opacity: 1;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Loading — skeleton shapes at the real geometry, never a spinner          */
+/* ---------------------------------------------------------------------- */
+
+.scn-skel {
+  position: relative;
+  overflow: hidden;
+  display: block;
+  background: var(--scn-raised);
+  border-radius: 10px;
+}
+
+.scn-skel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, var(--scn-veil), transparent);
+  transform: translateX(-100%);
+  animation: scn-sweep 1.1s var(--scn-ease) infinite;
+  animation-delay: calc(var(--i, 0) * 60ms);
+}
+
+.scn-skel--readout {
+  width: 96px;
+  height: 15px;
+  border-radius: 6px;
+}
+
+.scn-skel--card {
+  height: 92px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Motion                                                                  */
+/* ---------------------------------------------------------------------- */
+
+@keyframes scn-rise {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scn-pop {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.16);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes scn-sweep {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Narrow screens: one briefing per row, tighter chrome                     */
+/* ---------------------------------------------------------------------- */
+
+@media (max-width: 560px) {
+  .playbook {
+    padding: 10px 10px 12px;
+  }
+
+  .playbook__rack {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .playbook__readout {
+    order: 3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scen,
+  .scen__frame,
+  .scen__glyph,
+  .scen__title,
+  .scen__meter-fill,
+  .playbook__drawn,
+  .scn-skel::after {
+    transition-duration: 1ms;
+    animation: none;
+  }
+}
