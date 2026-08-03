@@ -12,7 +12,18 @@
       <p><span id="total">—</span> public datasets · coastal inundation, flooding, faults, landslides, climate & more</p>
       <input id="search" type="search" placeholder="Search datasets…" autocomplete="off" />
     </header>
-    <main id="app"></main>
+    <main>
+      <!-- filters-root: owned by the filter-panel ticket (theme/scope facet controls). -->
+      <div id="filters-root" role="region" aria-label="Filters"></div>
+      <!-- map-root: owned by the map ticket (interactive map of mappable datasets). -->
+      <div id="map-root" role="region" aria-label="Map"></div>
+      <!-- detail-root: owned by the dataset-detail ticket (selected dataset's metadata panel). -->
+      <div id="detail-root" role="region" aria-label="Dataset detail"></div>
+      <!-- charts-root: owned by the charts ticket (climate time-series charts). -->
+      <div id="charts-root" role="region" aria-label="Charts"></div>
+      <!-- app: the seed's theme-grouped catalogue card list, rendered by src/main.ts. -->
+      <div id="app"></div>
+    </main>
     <footer>
       Data: <a href="https://github.com/claudecommunity-nz/wcc-emergency-gis-data" target="_blank" rel="noreferrer">wcc-emergency-gis-data</a>.
       Built by the autonomous factory.
