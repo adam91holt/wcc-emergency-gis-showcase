@@ -1,0 +1,48 @@
+name: pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Workflow-wide default is read-only; only the deploy job needs to write a
+# Pages deployment and mint an OIDC token, so those scopes are granted on
+# that job specifically (below) rather than here.
+permissions:
+  contents: read
+
+# Only one Pages deployment at a time. In-progress production deploys are
+# allowed to finish rather than being cancelled, so the live site is never
+# left half-published.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: actions/configure-pages@v5
+      - run: bun install --frozen-lockfile || bun install
+      # vite.config.ts already defaults base to /wcc-emergency-gis-showcase/,
+      # which is the path Pages serves this project under, so assets resolve.
+      - run: bun run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
