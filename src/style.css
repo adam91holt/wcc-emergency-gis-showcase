@@ -40,8 +40,12 @@ body {
   font-weight: var(--weight-regular);
   color: var(--text-primary);
   background: var(--surface-0);
-  transition: background-color var(--duration-base) var(--ease-standard),
-    color var(--duration-base) var(--ease-standard);
+  /* Deliberately untransitioned: an OS or explicit theme swap replaces
+   * --text-primary and --surface-0 in the same tick. Cross-fading them would
+   * make foreground and background converge toward the same mid-tone
+   * part-way through the animation, transiently failing the AA contrast this
+   * ticket requires. Instant is correct here even though most colour changes
+   * in the app use --transition-colors. */
 }
 
 img,
@@ -227,15 +231,23 @@ button {
   background: var(--accent);
   border: var(--border-width) solid transparent;
   border-radius: var(--radius-md);
+  text-decoration: none;
   cursor: pointer;
   transition: var(--transition-colors), var(--transition-transform);
 }
 
+/* Pin the foreground explicitly in every state: the generic `a:hover` rule
+ * (which sets `color: var(--accent-hover)`) outranks this class's own base
+ * `color` declaration once specificity is compared property-by-property, so
+ * an anchor styled `.button` would otherwise lose its label to a
+ * same-colour-as-background text the moment it's hovered or pressed. */
 .button:hover {
+  color: var(--accent-fg);
   background: var(--accent-hover);
 }
 
 .button:active {
+  color: var(--accent-fg);
   background: var(--accent-pressed);
   transform: translateY(var(--border-width));
 }
@@ -848,6 +860,11 @@ main > * + * {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  /* A grid item's default min-width is auto (its content's min-content
+   * size), not 0 — an unbroken dataset name or id longer than --card-min
+   * would otherwise force its track past 100% and reintroduce the
+   * horizontal scroll this shell is required not to have. */
+  min-width: 0;
   padding: var(--space-4);
   background: var(--surface-2);
   border: var(--border-width) solid var(--border);
@@ -899,15 +916,19 @@ main > * + * {
   font-weight: var(--weight-semibold);
   line-height: var(--leading-snug);
   color: var(--text-primary);
+  overflow-wrap: anywhere;
 }
 
-/* The meta line is instrument text: mono, quiet, and never wrapped mid-token. */
+/* The meta line is instrument text: mono, quiet — and, unlike the card
+ * title, made only of short known-safe tokens (scope/authority/year), so it
+ * stays nowrap-free but still gets the same overflow guard as a backstop. */
 .ds .meta {
   margin-block: var(--space-2) var(--space-3);
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
   line-height: var(--leading-snug);
   color: var(--text-tertiary);
+  overflow-wrap: anywhere;
 }
 
 .ds a {
@@ -972,6 +993,7 @@ main > * + * {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-height: var(--tap-min);
   color: var(--text-secondary);
   text-decoration: none;
 }
@@ -1033,10 +1055,13 @@ main > * + * {
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
+    /* theme.css collapses --duration-fast to 0.01ms in this same query —
+     * referencing it here (rather than repeating the literal) keeps the
+     * "near-zero, not zero" value defined in exactly one place. */
+    animation-duration: var(--duration-fast) !important;
     animation-iteration-count: 1 !important;
     animation-delay: 0s !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: var(--duration-fast) !important;
   }
 
   .masthead__rule::after,
