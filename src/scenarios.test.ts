@@ -12,7 +12,7 @@ import {
   type Scenario,
 } from "./scenarios";
 import { findById, mappableDatasets } from "./catalogue";
-import { mergeHash, parseHash, type RouteState } from "./router";
+import { mergeHash, parseHash, toHash, type RouteState } from "./router";
 
 /** The state a briefing produces when it is loaded from an empty hash — the
  * exact thing a shared deep link carries. */
@@ -192,6 +192,39 @@ describe("patchForScenario", () => {
     expect(swapped.layers).toEqual(second.patch.layers);
     expect(isScenarioActive(second, swapped)).toBe(true);
     expect(isScenarioActive(first, swapped)).toBe(false);
+  });
+});
+
+describe("patchForScenario does not clobber state a visitor set by hand", () => {
+  // A briefing's chip stays pressed off the layer set alone (see
+  // isScenarioActive's "stays true when the theme facet is changed
+  // elsewhere" test) because that's what's actually drawn on the map. But
+  // clicking a pressed chip to clear it must not delete a theme the visitor
+  // picked afterwards via the filter panel's theme chips — that value is
+  // theirs now, not a stale copy of the briefing's own theme.
+  it("leaves a hand-picked theme alone when toggling a still-pressed chip off", () => {
+    for (const s of SCENARIOS) {
+      if (!s.patch.theme) continue;
+      const drifted: RouteState = { ...loadedState(s), theme: "climate" };
+      expect(isScenarioActive(s, drifted)).toBe(true);
+
+      const off = patchForScenario(s, drifted);
+      expect(off.layers).toBeUndefined();
+      expect("theme" in off).toBe(false);
+
+      const after = parseHash(mergeHash(toHash(drifted), off));
+      expect(after.layers).toBeUndefined();
+      expect(after.theme).toBe("climate");
+    }
+  });
+
+  it("still clears the theme on toggle-off when it still matches what the briefing set", () => {
+    for (const s of SCENARIOS) {
+      if (!s.patch.theme) continue;
+      const off = patchForScenario(s, loadedState(s));
+      expect("theme" in off).toBe(true);
+      expect(off.theme).toBeUndefined();
+    }
   });
 });
 

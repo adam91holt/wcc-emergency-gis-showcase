@@ -189,7 +189,19 @@ export function isScenarioActive(scenario: Scenario, state: RouteState): boolean
  * semantics, matching the card list and the theme chips: clicking a loaded
  * briefing clears the keys it set (each written as `undefined` so
  * router.mergeHash *deletes* them rather than leaving `layers=` empty), and
- * any key the briefing doesn't own is left alone. */
+ * any key the briefing doesn't own is left alone.
+ *
+ * `layers` is always cleared on toggle-off — it's the key `isScenarioActive`
+ * gates on, so "loaded" and "clear the map" agree. `theme`/`dataset` are only
+ * cleared when the state still holds exactly the value this briefing wrote:
+ * both keys are also owned by the card list / theme chips (see
+ * `isScenarioActive`'s doc), so if the visitor has since repointed one by
+ * hand — a theme-chip pick after loading a briefing, say — that is *their*
+ * state now, not a stale leftover of this briefing, and toggling the chip off
+ * must not silently delete it. Clearing every owned key unconditionally would
+ * do exactly that: the chip stays pressed (correctly — the map still shows
+ * this briefing's layers) right up until the click that wipes the visitor's
+ * own choice along with the layers. */
 export function patchForScenario(scenario: Scenario, state: RouteState): Partial<RouteState> {
   if (!isScenarioActive(scenario, state)) {
     return { ...scenario.patch, layers: [...scenario.patch.layers] };
@@ -197,8 +209,11 @@ export function patchForScenario(scenario: Scenario, state: RouteState): Partial
   const cleared: Partial<RouteState> = {};
   for (const key of scenarioKeys(scenario)) {
     if (key === "layers") cleared.layers = undefined;
-    else if (key === "theme") cleared.theme = undefined;
-    else cleared.dataset = undefined;
+    else if (key === "theme") {
+      if (state.theme === scenario.patch.theme) cleared.theme = undefined;
+    } else if (state.dataset === scenario.patch.dataset) {
+      cleared.dataset = undefined;
+    }
   }
   return cleared;
 }
