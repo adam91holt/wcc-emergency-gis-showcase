@@ -627,8 +627,14 @@ function inspectableLayers(): InspectLayer[] {
   return out;
 }
 
-function closeInspector(): void {
-  const popup = inspectorPopup;
+/** Drop the inspector's own state — the mark, the highlight, the spoken
+ * answer — without touching the popup's lifecycle. This is what a
+ * `popupclose` handler must call: Leaflet has not yet finished removing the
+ * popup layer at that point (`Map.removeLayer` fires `onRemove`, and only
+ * *then* deletes the layer from its registry), so calling `map.closePopup()`
+ * again from inside this handler would re-enter `Popup.onRemove` and fire a
+ * second `popupclose`/`remove` for the one user action that started it. */
+function clearInspectorState(): void {
   const mark = inspectorMark;
   inspectorPopup = null;
   inspectorMark = null;
@@ -636,6 +642,16 @@ function closeInspector(): void {
   highlightLayer(null);
   if (view) view.say.textContent = "";
   if (view && mark) view.map.removeLayer(mark);
+}
+
+/** Actively close the open inspection — a new layer landed, a layer left, or
+ * a fresh click is about to replace it. Leaflet's own close paths (the ✕
+ * button, Escape, `autoClose` on the next popup) never call this: they close
+ * the popup themselves and land on the `popupclose` handler below, which
+ * only clears state. */
+function closeInspector(): void {
+  const popup = inspectorPopup;
+  clearInspectorState();
   if (view && popup) view.map.closePopup(popup);
 }
 
@@ -676,7 +692,19 @@ function inspectAt(L: LeafletModule, map: LeafletMap, event: LeafletMouseEvent):
   const layers = inspectableLayers();
   if (layers.length === 0) return;
   const { lat, lng } = event.latlng;
-  const result = inspectPoint([lng, lat], layers, toleranceForZoom(map.getZoom(), lat));
+  // Leaflet's continuous world scroll lets `event.latlng.lng` drift past
+  // ±180 the moment the user pans to a wrapped copy of the map; every
+  // dataset's GeoJSON is normalised to -180..180, so the geometry test (and
+  // the coordinate printed in the popup) run on the wrapped point. The mark
+  // and the popup itself stay at the *literal* click latlng, so they still
+  // land exactly under the cursor even when that click was on a wrapped
+  // copy of the world.
+  const wrapped = event.latlng.wrap();
+  const result = inspectPoint(
+    [wrapped.lng, wrapped.lat],
+    layers,
+    toleranceForZoom(map.getZoom(), wrapped.lat),
+  );
 
   closeInspector();
   for (const hit of result.hits) {
@@ -694,10 +722,11 @@ function inspectAt(L: LeafletModule, map: LeafletMap, event: LeafletMouseEvent):
     className: "hazins-wrap",
     maxWidth: 300,
     minWidth: 232,
+    maxHeight: Math.max(160, map.getSize().y - 96),
     autoPanPadding: [24, 24],
   })
     .setLatLng(event.latlng)
-    .setContent(inspectorHtml(result, lat, lng))
+    .setContent(inspectorHtml(result, wrapped.lat, wrapped.lng))
     .openOn(map);
   wirePopupContent(L, inspectorPopup);
   // closeInspector() above blanked this, so even two identical verdicts in a
@@ -707,11 +736,13 @@ function inspectAt(L: LeafletModule, map: LeafletMap, event: LeafletMouseEvent):
 
 function wireInspector(L: LeafletModule, map: LeafletMap): void {
   map.on("click", (event) => inspectAt(L, map, event as LeafletMouseEvent));
-  // Closing by the ✕, by Escape, or by the next click all land here; the
-  // identity check keeps a popup we have already replaced from clearing the
-  // new one's marker.
+  // Closing by the ✕, by Escape, or by the next click's autoClose all land
+  // here *while Leaflet is still tearing the popup down* — only clear our
+  // own state, never call back into map.closePopup (see clearInspectorState).
+  // The identity check keeps a popup we have already replaced from clearing
+  // the new one's marker.
   map.on("popupclose", (event) => {
-    if ((event as PopupEvent).popup === inspectorPopup) closeInspector();
+    if ((event as PopupEvent).popup === inspectorPopup) clearInspectorState();
   });
 }
 

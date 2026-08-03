@@ -142,6 +142,38 @@ describe("pointInPolygon", () => {
     };
     expect(pointInPolygon(INSIDE, degenerate)).toBe(false);
   });
+
+  it("counts every outer edge as covering, regardless of winding", () => {
+    // The four edges of SQUARE, each tested at its midpoint. Even-odd ray
+    // casting alone answers these inconsistently by edge orientation — a
+    // click on the polygon's own rendered stroke must not depend on which
+    // side of the shape it landed on.
+    expect(pointInPolygon([174.8, -41.35], SQUARE)).toBe(true); // south edge
+    expect(pointInPolygon([174.8, -41.25], SQUARE)).toBe(true); // north edge
+    expect(pointInPolygon([174.7, -41.3], SQUARE)).toBe(true); // west edge
+    expect(pointInPolygon([174.9, -41.3], SQUARE)).toBe(true); // east edge
+  });
+
+  it("counts every vertex as covering too", () => {
+    for (const vertex of SQUARE.coordinates[0]) {
+      expect(pointInPolygon(vertex as LonLat, SQUARE)).toBe(true);
+    }
+  });
+
+  it("counts a point on an interior ring's boundary as covering the polygon", () => {
+    // The hole's own edges — ambiguous as "inside the dry island" or
+    // "inside the hazard extent", so they resolve the same way the outer
+    // boundary does: covering.
+    const holeRing = SQUARE_WITH_HOLE.coordinates[1];
+    expect(pointInPolygon([holeRing[0][0], holeRing[0][1]], SQUARE_WITH_HOLE)).toBe(true);
+    const midEdge: LonLat = [(holeRing[0][0] + holeRing[1][0]) / 2, holeRing[0][1]];
+    expect(pointInPolygon(midEdge, SQUARE_WITH_HOLE)).toBe(true);
+  });
+
+  it("still rejects a point just outside an edge", () => {
+    expect(pointInPolygon([174.9 + 0.001, -41.3], SQUARE)).toBe(false);
+    expect(pointInPolygon([174.7 - 0.001, -41.3], SQUARE)).toBe(false);
+  });
 });
 
 describe("distance to lines and points", () => {

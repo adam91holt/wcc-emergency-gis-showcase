@@ -90,7 +90,12 @@ export function lonScale(lat: number): number {
 
 /** Ray-casting (even–odd) containment for a single linear ring. Rings may be
  * given closed or open — the i/j wrap walks the closing edge either way. A
- * ring with fewer than three vertices encloses nothing. */
+ * ring with fewer than three vertices encloses nothing.
+ *
+ * This is a strict *interior* test only — a point sitting exactly on an edge
+ * is a coin flip under even-odd parity (it depends on which way that edge
+ * happens to be wound), so callers that care about the boundary use
+ * `ringBoundaryContains` first and treat this as "is it in the interior". */
 function ringContains(point: LonLat, ring: Position[]): boolean {
   if (!Array.isArray(ring) || ring.length < 3) return false;
   const [x, y] = point;
@@ -107,13 +112,55 @@ function ringContains(point: LonLat, ring: Position[]): boolean {
   return inside;
 }
 
+/** Tolerance for "on the line", in degrees — small enough to never swallow a
+ * genuinely-outside click, large enough to absorb float noise in service
+ * coordinates. */
+const BOUNDARY_EPSILON = 1e-9;
+
+/** Is the point on the segment a→b (inclusive of its endpoints)? Collinearity
+ * first (cross product ~0), then a bounding-box check to rule out points that
+ * are on the segment's *line* but past one of its ends. */
+function onSegment(point: LonLat, a: Position, b: Position): boolean {
+  const [px, py] = point;
+  const [ax, ay] = a;
+  const [bx, by] = b;
+  const cross = (bx - ax) * (py - ay) - (by - ay) * (px - ax);
+  if (Math.abs(cross) > BOUNDARY_EPSILON) return false;
+  return (
+    px >= Math.min(ax, bx) - BOUNDARY_EPSILON &&
+    px <= Math.max(ax, bx) + BOUNDARY_EPSILON &&
+    py >= Math.min(ay, by) - BOUNDARY_EPSILON &&
+    py <= Math.max(ay, by) + BOUNDARY_EPSILON
+  );
+}
+
+/** Is the point exactly on this ring's boundary — any of its edges, wrapping
+ * the closing edge the same way `ringContains` does? A ring of fewer than
+ * three vertices encloses (and bounds) nothing, matching `ringContains`. Pure
+ * geometry, so unlike the ray cast it gives the same answer regardless of
+ * which way the ring winds — a click on a polygon's east edge and a click on
+ * its west edge are answered identically. */
+function ringBoundaryContains(point: LonLat, ring: Position[]): boolean {
+  if (!Array.isArray(ring) || ring.length < 3) return false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    if (onSegment(point, ring[j], ring[i])) return true;
+  }
+  return false;
+}
+
 /** One GeoJSON polygon (ring 0 outer, rings 1+ holes): inside the outer ring
  * and inside none of the holes. A point in a hole — the dry island inside a
- * flood extent — is *outside* the polygon. */
+ * flood extent — is *outside* the polygon. A point sitting exactly on a
+ * boundary — the outer edge, or the edge of a hole — counts as covering the
+ * polygon: it is the line between "in" and "out", and the rendered stroke a
+ * user actually clicks on sits right there, so both edges of the same
+ * polygon (and both sides of a hole) must answer the same way. */
 function ringsContain(point: LonLat, rings: Position[][]): boolean {
   if (!Array.isArray(rings) || rings.length === 0) return false;
+  if (ringBoundaryContains(point, rings[0])) return true;
   if (!ringContains(point, rings[0])) return false;
   for (let i = 1; i < rings.length; i++) {
+    if (ringBoundaryContains(point, rings[i])) return true;
     if (ringContains(point, rings[i])) return false;
   }
   return true;
