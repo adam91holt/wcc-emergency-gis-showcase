@@ -3,16 +3,63 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
+    <meta
+      name="description"
+      content="An explorable showcase of 67 public Wellington Emergency Management GIS datasets — coastal inundation, flooding, active faults, landslides, sea level rise and climate projections."
+    />
     <title>WCC Emergency GIS — Data Showcase</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <header>
-      <h1>Wellington Emergency Management — GIS Data Showcase</h1>
-      <p><span id="total">—</span> public datasets · coastal inundation, flooding, faults, landslides, climate & more</p>
-      <input id="search" type="search" placeholder="Search datasets…" autocomplete="off" />
+    <a class="skip-link" href="#app">Skip to dataset catalogue</a>
+    <header class="site-header">
+      <div class="site-header__inner">
+        <p class="eyebrow">Wellington Emergency Management</p>
+        <h1>GIS Data Showcase</h1>
+        <p class="lede">
+          <strong><span id="total">—</span></strong> public datasets covering coastal inundation, flooding,
+          active faults, landslides, sea level rise and climate projections — spanning city, regional and
+          national scope.
+        </p>
+        <div class="search-shell">
+          <label class="visually-hidden" for="search">Search datasets</label>
+          <input id="search" type="search" placeholder="Search datasets…" autocomplete="off" />
+        </div>
+      </div>
     </header>
     <main>
+      <section class="hero panel" aria-labelledby="hero-heading">
+        <h2 id="hero-heading" class="hero__heading">What's in this showcase</h2>
+        <p class="hero__body">
+          Every dataset below is a live reference into Wellington's public emergency-management GIS layers —
+          hazard extents, exposure models and climate time series maintained by council and national science
+          agencies. Browse by theme, or search by name, authority or coverage area.
+        </p>
+        <div class="hero__legend cluster" role="list" aria-label="Hazard themes in this catalogue">
+          <span class="badge" role="listitem" style="--dot-color: var(--hazard-coastal_inundation)">
+            <span class="badge__dot" aria-hidden="true"></span>Coastal Inundation
+          </span>
+          <span class="badge" role="listitem" style="--dot-color: var(--hazard-flood)">
+            <span class="badge__dot" aria-hidden="true"></span>Flood Data
+          </span>
+          <span class="badge" role="listitem" style="--dot-color: var(--hazard-landslide)">
+            <span class="badge__dot" aria-hidden="true"></span>Landslides
+          </span>
+          <span class="badge" role="listitem" style="--dot-color: var(--hazard-earthquake)">
+            <span class="badge__dot" aria-hidden="true"></span>Earthquake Hazard
+          </span>
+          <span class="badge" role="listitem" style="--dot-color: var(--hazard-sea_level_rise)">
+            <span class="badge__dot" aria-hidden="true"></span>Sea Level Rise
+          </span>
+          <span class="badge" role="listitem" style="--dot-color: var(--hazard-climate)">
+            <span class="badge__dot" aria-hidden="true"></span>Climate Data
+          </span>
+          <span class="badge" role="listitem" style="--dot-color: var(--hazard-other)">
+            <span class="badge__dot" aria-hidden="true"></span>Other
+          </span>
+        </div>
+      </section>
       <!-- filters-root: owned by the filter-panel ticket (theme/scope facet controls). -->
       <div id="filters-root" role="region" aria-label="Filters"></div>
       <!-- map-root: owned by the map ticket (interactive map of mappable datasets). -->
@@ -24,9 +71,15 @@
       <!-- app: the seed's theme-grouped catalogue card list, rendered by src/main.ts. -->
       <div id="app"></div>
     </main>
-    <footer>
-      Data: <a href="https://github.com/claudecommunity-nz/wcc-emergency-gis-data" target="_blank" rel="noreferrer">wcc-emergency-gis-data</a>.
-      Built by the autonomous factory.
+    <footer class="site-footer">
+      <div class="site-footer__inner">
+        <p class="site-footer__sources">
+          Data sources:
+          <a href="https://github.com/claudecommunity-nz/wcc-emergency-gis-data" target="_blank" rel="noreferrer">Wellington City Council</a
+          >, Greater Wellington Regional Council, GNS Science.
+        </p>
+        <p>Built by the autonomous factory.</p>
+      </div>
     </footer>
     <script type="module" src="/src/main.ts"></script>
   </body>

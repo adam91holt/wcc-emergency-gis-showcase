@@ -1,0 +1,259 @@
+/* Design tokens for the WCC Emergency GIS Data Showcase.
+ *
+ * Every colour, size and timing value the shared chrome uses lives here as a
+ * custom property. Feature modules (map/detail/filters/charts) should reach
+ * for these tokens rather than inventing new hex values or magic pixel
+ * numbers — see docs/design-tokens.md for the full catalogue and intended
+ * use of each group below.
+ *
+ * Theming: the app is dark-first — the bare `:root` block below (no media
+ * query, no attribute) IS the dark palette, so anything that doesn't
+ * understand `prefers-color-scheme` still gets a deliberate look. Light mode
+ * is layered on in three ways, in this order of precedence:
+ *   1. `:root`                                   — dark (the default/fallback)
+ *   2. `@media (prefers-color-scheme: light)`     — light, when the OS asks for it
+ *   3. `html[data-theme="light" | "dark"]`        — explicit override, wins
+ *      over both of the above regardless of OS preference. No toggle ships
+ *      in this ticket, but the attribute is live today so a future
+ *      light/dark switch is a one-line `document.documentElement.dataset.theme
+ *      = "light"` with zero CSS changes.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* ---- Colour: surfaces (near-black ladder, 4-6 step luminance jumps) ---- */
+  --surface-0: #0b0f14; /* page background */
+  --surface-1: #121820; /* header/footer/panel background */
+  --surface-2: #1a212b; /* raised: cards, the dataset grid */
+  --surface-3: #232b36; /* hover/active state of a raised surface */
+
+  /* ---- Colour: borders (hairlines, not shadows, separate dark surfaces) --- */
+  --border: #262e39;
+  --border-strong: #3a4452;
+
+  /* ---- Colour: text (off-white, stepped down in luminance, never opacity) - */
+  --text-primary: #eef2f6;
+  --text-secondary: #aab5c0;
+  --text-tertiary: #8a95a1; /* AA at 4.5:1 against every dark surface incl. hover, see docs */
+
+  /* ---- Colour: the one owned accent (emergency-signal amber) ---- */
+  --accent: #ffa63d;
+  --accent-hover: #ffb85c; /* lighter = "closer" on dark surfaces */
+  --accent-fg: #1a1206; /* text/icons drawn on top of --accent */
+
+  /* ---- Colour: hazard-category identity (catalogue.ts Dataset["theme"]) --
+   * Small, restrained uses only — a swatch dot, a 3px left border on a
+   * theme section heading, a badge outline. They identify a category at a
+   * glance; they never compete with --accent for primary interactive
+   * attention (see docs/design-tokens.md "hazard accents" for the rule). */
+  --hazard-coastal_inundation: #38bdf8;
+  --hazard-flood: #3b82f6;
+  --hazard-landslide: #d97706;
+  --hazard-earthquake: #f43f5e;
+  --hazard-sea_level_rise: #22d3ee;
+  --hazard-climate: #4ade80;
+  --hazard-other: #94a3b8;
+
+  /* ---- Colour: status (kept to two, per the "six accents = zero" rule) --- */
+  --success: #4ade80;
+  --danger: #f87171;
+
+  /* ---- Elevation: hairline-first; shadows only for things that float ---- */
+  --shadow-color: 0deg 0% 0%;
+  --shadow-sm: 0 1px 2px hsl(var(--shadow-color) / 0.4);
+  --shadow-md: 0 8px 24px -4px hsl(var(--shadow-color) / 0.45);
+  --shadow-lg: 0 24px 48px -8px hsl(var(--shadow-color) / 0.55);
+
+  /* ---- Focus: one ring, defined once, inherited by every interactive el -- */
+  --focus-ring-color: var(--accent);
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+
+  /* ---- Type: paired families (display carries weight/tracking, mono
+   * carries figures) — self-hosted webfonts are out of scope for this
+   * ticket's file list, so the "pairing" is expressed through weight,
+   * tracking and case rather than a second typeface. ---- */
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+  --font-mono:
+    ui-monospace, "SF Mono", "Cascadia Code", "Segoe UI Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  /* ---- Type: modular scale (~1.25 ratio), one set of sizes for the whole
+   * shell. Feature modules should pick from this scale rather than adding
+   * their own font-size literals. ---- */
+  --text-xs: 0.75rem; /* 12px — meta, timestamps, counts */
+  --text-sm: 0.875rem; /* 14px — secondary body, labels */
+  --text-base: 1rem; /* 16px — body copy */
+  --text-md: 1.125rem; /* 18px — lead paragraph, card titles */
+  --text-lg: 1.375rem; /* 22px — section headings */
+  --text-xl: 1.75rem; /* 28px — page heading (h1) at rest */
+  --text-2xl: 2.25rem; /* 36px — hero heading, wide viewports */
+
+  --leading-tight: 1.15;
+  --leading-snug: 1.35;
+  --leading-normal: 1.55;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --tracking-tight: -0.01em; /* headings */
+  --tracking-normal: 0;
+  --tracking-eyebrow: 0.08em; /* uppercase section labels */
+
+  /* ---- Space: 8px-based scale (half-step at 4px for hairline gaps) ---- */
+  --space-0: 0;
+  --space-1: 0.25rem; /* 4px */
+  --space-2: 0.5rem; /* 8px */
+  --space-3: 0.75rem; /* 12px */
+  --space-4: 1rem; /* 16px */
+  --space-5: 1.5rem; /* 24px */
+  --space-6: 2rem; /* 32px */
+  --space-7: 3rem; /* 48px */
+  --space-8: 4rem; /* 64px */
+
+  /* ---- Radii ---- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-full: 999px;
+
+  /* ---- Motion: transform/opacity only, never layout props ---- */
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+
+  /* ---- Layout ---- */
+  --content-width: 72rem;
+  --prose-width: 62ch;
+}
+
+/* Light: applied automatically when the OS asks for it... */
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+
+    --surface-0: #f3f5f7;
+    --surface-1: #ffffff;
+    --surface-2: #ffffff;
+    --surface-3: #eef0f3;
+
+    --border: #dde1e7;
+    --border-strong: #c7ccd4;
+
+    --text-primary: #12161c;
+    --text-secondary: #454e58;
+    --text-tertiary: #5c6672;
+
+    --accent: #a3540a;
+    --accent-hover: #8a4708; /* darker = "pressed" on light surfaces */
+    --accent-fg: #fffaf5;
+
+    --hazard-coastal_inundation: #0284c7;
+    --hazard-flood: #2563eb;
+    --hazard-landslide: #92400e;
+    --hazard-earthquake: #e11d48;
+    --hazard-sea_level_rise: #0891b2;
+    --hazard-climate: #15803d;
+    --hazard-other: #64748b;
+
+    --success: #15803d;
+    --danger: #b91c1c;
+
+    --shadow-color: 220deg 20% 30%;
+    --shadow-sm: 0 1px 2px hsl(var(--shadow-color) / 0.08);
+    --shadow-md: 0 8px 24px -4px hsl(var(--shadow-color) / 0.12);
+    --shadow-lg: 0 24px 48px -8px hsl(var(--shadow-color) / 0.16);
+  }
+}
+
+/* ...and reasserted here so an explicit `data-theme` (a future toggle) always
+ * wins, even against an OS preference that disagrees with it. */
+html[data-theme="light"] {
+  color-scheme: light;
+
+  --surface-0: #f3f5f7;
+  --surface-1: #ffffff;
+  --surface-2: #ffffff;
+  --surface-3: #eef0f3;
+
+  --border: #dde1e7;
+  --border-strong: #c7ccd4;
+
+  --text-primary: #12161c;
+  --text-secondary: #454e58;
+  --text-tertiary: #5c6672;
+
+  --accent: #a3540a;
+  --accent-hover: #8a4708;
+  --accent-fg: #fffaf5;
+
+  --hazard-coastal_inundation: #0284c7;
+  --hazard-flood: #2563eb;
+  --hazard-landslide: #92400e;
+  --hazard-earthquake: #e11d48;
+  --hazard-sea_level_rise: #0891b2;
+  --hazard-climate: #15803d;
+  --hazard-other: #64748b;
+
+  --success: #15803d;
+  --danger: #b91c1c;
+
+  --shadow-color: 220deg 20% 30%;
+  --shadow-sm: 0 1px 2px hsl(var(--shadow-color) / 0.08);
+  --shadow-md: 0 8px 24px -4px hsl(var(--shadow-color) / 0.12);
+  --shadow-lg: 0 24px 48px -8px hsl(var(--shadow-color) / 0.16);
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+
+  --surface-0: #0b0f14;
+  --surface-1: #121820;
+  --surface-2: #1a212b;
+  --surface-3: #232b36;
+
+  --border: #262e39;
+  --border-strong: #3a4452;
+
+  --text-primary: #eef2f6;
+  --text-secondary: #aab5c0;
+  --text-tertiary: #8a95a1;
+
+  --accent: #ffa63d;
+  --accent-hover: #ffb85c;
+  --accent-fg: #1a1206;
+
+  --hazard-coastal_inundation: #38bdf8;
+  --hazard-flood: #3b82f6;
+  --hazard-landslide: #d97706;
+  --hazard-earthquake: #f43f5e;
+  --hazard-sea_level_rise: #22d3ee;
+  --hazard-climate: #4ade80;
+  --hazard-other: #94a3b8;
+
+  --success: #4ade80;
+  --danger: #f87171;
+
+  --shadow-color: 0deg 0% 0%;
+  --shadow-sm: 0 1px 2px hsl(var(--shadow-color) / 0.4);
+  --shadow-md: 0 8px 24px -4px hsl(var(--shadow-color) / 0.45);
+  --shadow-lg: 0 24px 48px -8px hsl(var(--shadow-color) / 0.55);
+}
+
+/* Motion is opt-out, not opt-in: anything animating a --duration-* token
+ * collapses to (near) instant for users who asked for reduced motion,
+ * without every component needing its own media query. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0.01ms;
+    --duration-base: 0.01ms;
+    --duration-slow: 0.01ms;
+  }
+}
