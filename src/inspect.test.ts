@@ -316,7 +316,10 @@ describe("inspectPoint", () => {
     const result = inspectPoint([174.7801, -41.29], [mixed], 0.001);
     expect(result.hits[0].mode).toBe("covers");
     expect(result.hits[0].distance).toBe(0);
-    expect(result.hits[0].matches).toBe(2);
+    // The fault line is also within tolerance here, but it never covered
+    // anything — it must not inflate the covering count the popup's "N×
+    // covers" badge reads from.
+    expect(result.hits[0].matches).toBe(1);
   });
 
   it("inspects the parts of a GeometryCollection", () => {

@@ -51,7 +51,13 @@ export interface LayerHit {
   theme: string;
   color: string;
   mode: HitMode;
-  /** How many of the layer's features hit — flood extents can stack. */
+  /** How many of the layer's features answered in the reported `mode` — e.g.
+   * two stacked flood extents that both cover the point count as
+   * `matches: 2`, mode "covers". A feature that merely sits within tolerance
+   * (mode "near") never inflates this: a "covers" reading always outranks a
+   * "near" one, so once a layer covers, only its covering features are
+   * counted — a nearby line on the same layer does not turn one covering
+   * extent into a false "2× covers". */
   matches: number;
   /** Latitude-degrees to the nearest hitting feature; 0 for a containing
    * polygon. */
@@ -308,7 +314,14 @@ export function inspectPoint(
 
   for (const layer of layers) {
     const features = layer.collection?.features ?? [];
-    let matches = 0;
+    // Covering and near hits are counted separately — a covering reading
+    // always outranks a near one, so `matches` (below) reports whichever
+    // count belongs to the mode actually reported, never their sum. Without
+    // that split, one nearby line on a layer that also genuinely covers the
+    // point would inflate the popup's "N× covers" badge with a hit that
+    // never covered anything.
+    let coverCount = 0;
+    let nearCount = 0;
     let mode: HitMode = "near";
     let distance = Infinity;
     let first: Feature<Geometry, GeoJsonProperties> | null = null;
@@ -316,19 +329,25 @@ export function inspectPoint(
     for (const feature of features) {
       const hit = hitGeometry(point, feature?.geometry, tolerance);
       if (!hit) continue;
-      matches++;
       // A containing polygon always outranks a nearby line, and among equals
       // the closest wins — that is the feature the popup reports on.
-      if (hit.mode === "covers" && mode !== "covers") {
-        mode = "covers";
-        distance = hit.distance;
-        first = feature;
-      } else if (hit.mode === mode && hit.distance < distance) {
-        distance = hit.distance;
-        first = feature;
+      if (hit.mode === "covers") {
+        coverCount++;
+        if (mode !== "covers") {
+          mode = "covers";
+          distance = hit.distance;
+          first = feature;
+        }
+      } else {
+        nearCount++;
+        if (mode !== "covers" && hit.distance < distance) {
+          distance = hit.distance;
+          first = feature;
+        }
       }
     }
 
+    const matches = mode === "covers" ? coverCount : nearCount;
     const { id, label, theme, color } = layer;
     if (matches > 0) {
       hits.push({ id, label, theme, color, mode, matches, distance, feature: first });

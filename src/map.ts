@@ -27,6 +27,7 @@ import {
   type InspectLayer,
   type InspectResult,
   type LayerHit,
+  type LonLat,
 } from "./inspect";
 import { getState, setState, type RouteState } from "./router";
 import type {
@@ -365,10 +366,10 @@ function formatDistance(degrees: number): string {
 }
 
 /** Up to `limit` attributes of the matched feature that actually carry a
- * value — the same readout the old per-feature popup gave, now attached to
- * the layer row it belongs to. Values come from the service, so both key and
- * value are escaped. */
-function attrChips(feature: Feature<Geometry, GeoJsonProperties> | null, limit = 3): string {
+ * value — the same six-attribute readout the old per-feature popup gave, now
+ * attached to the layer row it belongs to. Values come from the service, so
+ * both key and value are escaped. */
+function attrChips(feature: Feature<Geometry, GeoJsonProperties> | null, limit = 6): string {
   const entries = Object.entries(feature?.properties ?? {})
     .filter(([, v]) => v !== null && v !== "" && v !== undefined)
     .slice(0, limit);
@@ -542,9 +543,12 @@ async function activateLayer(L: LeafletModule, id: string): Promise<void> {
   });
   layer.addTo(view.map);
   drawn.set(id, layer);
-  // Same reason as deactivateLayer: a layer landing mid-inspection would make
-  // the open popup's "not in" line wrong.
-  closeInspector();
+  // A layer landing mid-inspection would make the open popup's "not in" line
+  // wrong — but the fix for that is to re-answer, not to snatch the popup
+  // away from someone reading it. refreshInspector() re-runs the same
+  // inspection against the now-larger layer set and updates the open popup's
+  // content in place; if nothing is open it is a no-op.
+  refreshInspector();
 
   const count = data.features.length;
   const capped = data.exceededTransferLimit ? " (capped)" : "";
@@ -556,8 +560,10 @@ function deactivateLayer(id: string): void {
   if (layer && view) view.map.removeLayer(layer);
   drawn.delete(id);
   // An open inspection is an answer about a specific set of layers; once that
-  // set changes the answer is stale, so it goes rather than lying.
-  closeInspector();
+  // set changes the answer is stale. refreshInspector() re-answers against
+  // the smaller set in place, and closes the popup itself if nothing is left
+  // to check.
+  refreshInspector();
   setRowStatus(id, "off");
 }
 
@@ -588,6 +594,10 @@ function focusLayer(id: string): void {
 let inspectorPopup: Popup | null = null;
 let inspectorMark: CircleMarker | null = null;
 let highlighted: string | null = null;
+/** The clicked point behind the open popup, in GeoJSON `[lon, lat]` order —
+ * kept so a layer arriving or leaving can re-run the same inspection rather
+ * than only being able to close the popup. `null` whenever no popup is open. */
+let inspectorPoint: LonLat | null = null;
 /** The feature that answered for each hit layer in the open popup, so a click
  * on a row can frame *that* extent rather than the whole layer. */
 const inspectorFeatures = new Map<string, Feature<Geometry, GeoJsonProperties>>();
@@ -638,6 +648,7 @@ function clearInspectorState(): void {
   const mark = inspectorMark;
   inspectorPopup = null;
   inspectorMark = null;
+  inspectorPoint = null;
   inspectorFeatures.clear();
   highlightLayer(null);
   if (view) view.say.textContent = "";
@@ -653,6 +664,29 @@ function closeInspector(): void {
   const popup = inspectorPopup;
   clearInspectorState();
   if (view && popup) view.map.closePopup(popup);
+}
+
+/** Re-answer the open inspection against the current layer set and update its
+ * popup in place — called whenever a layer is drawn or removed while a popup
+ * is open, so an unrelated fetch landing does not snatch away the answer
+ * someone is mid-read of. A no-op when no popup is open. Closes the popup
+ * outright once nothing is left to check, matching inspectAt's own
+ * nothing-drawn no-op. */
+function refreshInspector(): void {
+  if (!inspectorPopup || !inspectorPoint || !view) return;
+  const layers = inspectableLayers();
+  if (layers.length === 0) {
+    closeInspector();
+    return;
+  }
+  const [lon, lat] = inspectorPoint;
+  const result = inspectPoint(inspectorPoint, layers, toleranceForZoom(view.map.getZoom(), lat));
+  inspectorFeatures.clear();
+  for (const hit of result.hits) {
+    if (hit.feature) inspectorFeatures.set(hit.id, hit.feature);
+  }
+  inspectorPopup.setContent(inspectorHtml(result, lat, lon));
+  view.say.textContent = inspectionSummary(result);
 }
 
 /** Frame the single feature that answered for a row. Same reduced-motion
@@ -707,6 +741,7 @@ function inspectAt(L: LeafletModule, map: LeafletMap, event: LeafletMouseEvent):
   );
 
   closeInspector();
+  inspectorPoint = [wrapped.lng, wrapped.lat];
   for (const hit of result.hits) {
     if (hit.feature) inspectorFeatures.set(hit.id, hit.feature);
   }
@@ -981,6 +1016,7 @@ export default function renderMap(root: HTMLElement, state: RouteState): void {
     rowStatus.clear();
     inspectorPopup = null;
     inspectorMark = null;
+    inspectorPoint = null;
     inspectorFeatures.clear();
     highlighted = null;
   }
