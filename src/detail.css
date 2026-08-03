@@ -69,6 +69,28 @@
 }
 
 /* ---------------------------------------------------------------------- */
+/* Visually-hidden utility                                                 */
+/* ---------------------------------------------------------------------- */
+
+/* Same recipe as src/filters.css's `.sr-only` (kept here too, not imported
+ * from there): probeHtml's loading/ready/error branches emit `.sr-only`
+ * status paragraphs, and this stylesheet is what the ticket makes
+ * responsible for this panel's styling, so the panel must not depend on
+ * filters.css happening to already be loaded to render correctly. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------------------------------------------------------------------- */
 /* Dossier shell                                                           */
 /* ---------------------------------------------------------------------- */
 

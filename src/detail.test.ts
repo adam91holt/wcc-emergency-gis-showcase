@@ -335,6 +335,33 @@ describe("fetchLayerPreview", () => {
     expect(state).toEqual({ status: "unavailable" });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
+
+  it("still times out a hanging request when AbortSignal.timeout is unavailable", async () => {
+    const originalTimeout = AbortSignal.timeout;
+    // @ts-expect-error — emulate a runtime without AbortSignal.timeout
+    delete AbortSignal.timeout;
+    vi.useFakeTimers();
+    try {
+      // A fetch double that behaves like the real thing: it never settles on
+      // its own, but rejects once its own `signal` is aborted.
+      const hangingFetch: FetchLike = (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal!.reason));
+        });
+
+      const pending = fetchLayerPreview(dataset({}), hangingFetch);
+      await vi.advanceTimersByTimeAsync(8000);
+      const state = await pending;
+
+      expect(state).toEqual({
+        status: "error",
+        message: "The layer service did not respond in time.",
+      });
+    } finally {
+      AbortSignal.timeout = originalTimeout;
+      vi.useRealTimers();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -374,6 +401,29 @@ function deferredFetch(): {
     },
     get pending() {
       return waiting.length;
+    },
+  };
+}
+
+/** A fetch double whose *info* requests are released individually, by call
+ * order rather than by URL — unlike deferredFetch, which answers every call
+ * matching a given URL identically (so it can't tell two probes for the same
+ * dataset apart). Feature-count requests auto-resolve immediately, so a test
+ * only has to reason about the ordering of the info request that determines
+ * `PreviewState.info`. */
+function infoOrderedFetch(): {
+  fetchImpl: FetchLike;
+  releaseInfo: (index: number, body: unknown) => void;
+} {
+  const infoResolvers: ((r: FetchResponseLike) => void)[] = [];
+  const fetchImpl: FetchLike = (url) => {
+    if (url.includes("returnCountOnly")) return Promise.resolve(response({ count: 1 }));
+    return new Promise<FetchResponseLike>((resolve) => infoResolvers.push(resolve));
+  };
+  return {
+    fetchImpl,
+    releaseInfo(index, body) {
+      infoResolvers[index](response(body));
     },
   };
 }
@@ -450,14 +500,49 @@ describe("createPreviewController", () => {
     expect(painted.some(([, s]) => s.status === "ready" && s.info.name === "ALPHA LAYER")).toBe(false);
   });
 
+  it("keeps a stale probe for the same id from overwriting a newer one, even when it resolves later", async () => {
+    // A → A: reselecting the *same* dataset while its own earlier probe is
+    // still in flight. An id-only stale-response guard can't tell these two
+    // probes apart (both are "for alpha"), so the first probe's late answer
+    // would incorrectly repaint over the second, current one. This is the
+    // same failure mode an A → B → A sequence hits: whichever earlier probe
+    // for the currently-selected id resolves last must lose to the latest
+    // one, not merely to a since-deselected one.
+    const painted: [string | undefined, PreviewState][] = [];
+    const { fetchImpl, releaseInfo } = infoOrderedFetch();
+    const controller = createPreviewController((id, state) => painted.push([id, state]), fetchImpl);
+
+    controller.select(alpha); // first probe's info request: index 0
+    controller.select(alpha); // reselected before it settled: second probe's info request: index 1
+
+    // The second (current) probe answers first...
+    releaseInfo(1, { ...ARCGIS_LAYER_JSON, name: "CURRENT" });
+    await vi.waitFor(() => expect(controller.state().status).toBe("ready"));
+    let state = controller.state();
+    if (state.status !== "ready") throw new Error("unreachable");
+    expect(state.info.name).toBe("CURRENT");
+
+    // ...then the first (stale) probe answers late.
+    releaseInfo(0, { ...ARCGIS_LAYER_JSON, name: "STALE" });
+    await new Promise((r) => setTimeout(r, 0));
+
+    state = controller.state();
+    if (state.status !== "ready") throw new Error("unreachable");
+    expect(state.info.name).toBe("CURRENT");
+    expect(painted.some(([, s]) => s.status === "ready" && s.info.name === "STALE")).toBe(false);
+  });
+
   it("paints unavailable without a request for a non-queryable dataset", () => {
     const painted: [string | undefined, PreviewState][] = [];
-    const { fetchImpl, pending } = deferredFetch();
-    const controller = createPreviewController((id, state) => painted.push([id, state]), fetchImpl);
+    // Keep the double itself (not a destructured `pending`, which would just
+    // snapshot the getter's value — 0 — at this point, before select() runs,
+    // making the assertion below true no matter what select() does).
+    const probe = deferredFetch();
+    const controller = createPreviewController((id, state) => painted.push([id, state]), probe.fetchImpl);
 
     controller.select(dataset({ id: "portal", feature_queryable: false, service_root: null }));
     expect(painted).toEqual([["portal", { status: "unavailable" }]]);
-    expect(pending).toBe(0);
+    expect(probe.pending).toBe(0);
   });
 
   it("paints idle when the selection is cleared", () => {

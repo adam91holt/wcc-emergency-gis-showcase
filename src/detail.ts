@@ -164,15 +164,41 @@ const defaultFetch: FetchLike = (url, init) => {
   return impl(url, init);
 };
 
-function timeoutSignal(): AbortSignal | undefined {
+function timeoutError(): Error {
+  return Object.assign(new Error("The layer service did not respond in time."), { name: "TimeoutError" });
+}
+
+/** A request-scoped timeout signal, plus the teardown for it. Prefers the
+ * native `AbortSignal.timeout` (self-clearing); on a runtime that lacks it
+ * (older Node, older Safari), falls back to a manual `AbortController` +
+ * `setTimeout` so the 8s ceiling still holds — otherwise a hanging request
+ * would never resolve on such a runtime, leaving the panel's loading
+ * skeleton on screen forever. The timer is `unref`'d and always cleared by
+ * the caller once the request settles, so it can't keep a Node process (or a
+ * test) alive past the request it belongs to. */
+function withTimeout(): { signal: AbortSignal | undefined; clear: () => void } {
   const ctor = globalThis.AbortSignal;
-  return ctor && typeof ctor.timeout === "function" ? ctor.timeout(PREVIEW_TIMEOUT_MS) : undefined;
+  if (ctor && typeof ctor.timeout === "function") {
+    return { signal: ctor.timeout(PREVIEW_TIMEOUT_MS), clear: () => {} };
+  }
+  const ControllerCtor = globalThis.AbortController;
+  if (!ControllerCtor) return { signal: undefined, clear: () => {} };
+  const controller = new ControllerCtor();
+  const timer = setTimeout(() => controller.abort(timeoutError()), PREVIEW_TIMEOUT_MS);
+  const unrefable = timer as unknown as { unref?: () => void };
+  unrefable.unref?.();
+  return { signal: controller.signal, clear: () => clearTimeout(timer) };
 }
 
 async function getJson(fetchImpl: FetchLike, url: string): Promise<unknown> {
-  const res = await fetchImpl(url, { signal: timeoutSignal() });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return await res.json();
+  const { signal, clear } = withTimeout();
+  try {
+    const res = await fetchImpl(url, { signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } finally {
+    clear();
+  }
 }
 
 /** Turn whatever the fetch layer threw into one sentence a non-developer can
@@ -194,10 +220,13 @@ export type PreviewState =
   | { status: "ready"; info: LayerInfo; count: number | null }
   | { status: "error"; message: string };
 
-/** Probe a dataset's layer: metadata and feature count in parallel. The count
- * is best-effort (some services publish layer metadata but reject `query`),
- * so a failed count degrades to "unknown" while the rest of the preview still
- * renders; a failed metadata request is the error state. */
+/** Probe a dataset's layer: metadata first, then (once it's back) the feature
+ * count — deliberately sequential, not parallel, so a metadata failure skips
+ * the count round-trip entirely rather than racing a request whose result
+ * would just be discarded. The count is best-effort (some services publish
+ * layer metadata but reject `query`), so a failed count degrades to "unknown"
+ * while the rest of the preview still renders; a failed metadata request is
+ * the error state. */
 export async function fetchLayerPreview(
   d: Dataset,
   fetchImpl: FetchLike = defaultFetch,
@@ -252,18 +281,27 @@ export interface PreviewController {
 
 /** Owns the one piece of genuinely asynchronous state in this module, and the
  * stale-response guard that goes with it: every probe records the dataset id
- * it was started for, and a response whose id is no longer the selected one is
- * dropped without painting. Without it, clicking through cards faster than the
- * services answer would paint dataset A's geometry under dataset B's title. */
+ * *and* a generation counter it was started for, and a response whose id or
+ * generation no longer matches the latest select() call is dropped without
+ * painting. The id alone isn't enough — an A → B → A sequence reselects the
+ * same id, so an id-only check would let A's first (now-stale) probe paint
+ * over the second, current one if it happens to resolve later. The
+ * generation counter distinguishes those two probes even though they share
+ * an id. Without either half of this guard, clicking through cards faster
+ * than the services answer could paint stale geometry under the wrong (or a
+ * since-superseded) dataset's title. */
 export function createPreviewController(
   paint: (id: string | undefined, state: PreviewState) => void,
   fetchImpl: FetchLike = defaultFetch,
 ): PreviewController {
   let activeId: string | undefined;
+  let activeGeneration = 0;
   let current: PreviewState = { status: "idle" };
 
-  const settle = (id: string, next: PreviewState): void => {
-    if (activeId !== id) return; // stale: this dataset is no longer selected
+  const settle = (id: string, generation: number, next: PreviewState): void => {
+    // stale: this dataset is no longer selected, or a newer probe for the
+    // same dataset has since started.
+    if (activeId !== id || activeGeneration !== generation) return;
     current = next;
     paint(id, next);
   };
@@ -271,6 +309,8 @@ export function createPreviewController(
   return {
     state: () => current,
     select(d) {
+      activeGeneration += 1;
+      const generation = activeGeneration;
       activeId = d?.id;
       if (!d) {
         current = { status: "idle" };
@@ -282,8 +322,8 @@ export function createPreviewController(
       if (current.status !== "loading") return;
       const id = d.id;
       void fetchLayerPreview(d, fetchImpl).then(
-        (next) => settle(id, next),
-        (err) => settle(id, { status: "error", message: describeFetchError(err) }),
+        (next) => settle(id, generation, next),
+        (err) => settle(id, generation, { status: "error", message: describeFetchError(err) }),
       );
     },
   };
@@ -441,7 +481,7 @@ export function probeHtml(d: Dataset, preview: PreviewState): string {
           ${fieldChips(info.fields)}
         </div>
         <p class="sr-only" role="status">Live layer online: ${esc(geometryLabel(info.geometryType))} geometry, ${
-          count === null ? "feature count unavailable" : `${formatCount(count)} features`
+          count === null ? "feature count unavailable" : `${formatCount(count)} ${count === 1 ? "feature" : "features"}`
         }, ${info.fields.length} fields.</p>`;
     }
 
@@ -453,8 +493,18 @@ export function probeHtml(d: Dataset, preview: PreviewState): string {
         </div>
         <p class="sr-only" role="status">Live layer probe failed: ${esc(preview.message)}</p>`;
 
-    case "unavailable":
+    // `idle` is not reachable through the controller with a defined dataset
+    // (select() only ever paints `idle` alongside no dataset, and detailHtml
+    // skips this subtree entirely when there's no dataset) — but probeHtml is
+    // an exported, independently unit-testable function per the ticket, so a
+    // direct `probeHtml(d, { status: "idle" })` call is a legal invocation.
+    // Render nothing rather than folding it into "unavailable": that status
+    // is a specific, factual claim (this dataset isn't feature-queryable)
+    // that isn't true just because no probe has run yet.
     case "idle":
+      return "";
+
+    case "unavailable":
     default:
       return `${probeHead("unavailable", "No live layer")}
         <div class="probe__body">
