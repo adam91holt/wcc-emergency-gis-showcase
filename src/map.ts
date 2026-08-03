@@ -365,10 +365,16 @@ function formatCoord(lat: number, lon: number): string {
   return `${Math.abs(lat).toFixed(4)}°${ns} · ${Math.abs(lon).toFixed(4)}°${ew}`;
 }
 
-/** Latitude degrees → the nearest useful ground unit. */
+/** Latitude degrees → the nearest useful ground unit. Never rounds a real
+ * distance up to a false "1 m": a click that lands exactly on a fault trace
+ * or a point marker's own coordinate measures 0, and reporting that as "≈ 1 m
+ * away" would claim an inaccuracy that was never there. `hitHtml` special-cases
+ * that exact case as "on it" before this ever runs; everything else rounds
+ * down to the metre it actually is, including a true "0 m" for a near-miss
+ * that traces to sub-metre float noise rather than a clean hit. */
 function formatDistance(degrees: number): string {
   const metres = degrees * METRES_PER_DEGREE;
-  if (metres < 950) return `${Math.max(1, Math.round(metres))} m`;
+  if (metres < 950) return `${Math.round(metres)} m`;
   return `${(metres / 1000).toFixed(1)} km`;
 }
 
@@ -403,12 +409,19 @@ function attrChips(feature: Feature<Geometry, GeoJsonProperties> | null, limit =
  * because it does something: hovering lights that layer up on the map,
  * clicking frames the very feature that answered. */
 function hitHtml(hit: LayerHit): string {
+  // Sub-metre is "on it", not "≈ 0 m" or the old "≈ 1 m" — a click that lands
+  // exactly on a fault trace or a point feature's own coordinate (distance 0)
+  // was never approximate, and rounding a genuine 0.2 m up to a whole metre
+  // claimed a fuzziness the geometry never had.
+  const onIt = hit.distance * METRES_PER_DEGREE < 0.5;
   const badge =
     hit.mode === "covers"
       ? hit.matches > 1
         ? `${hit.matches}× covers`
         : "covers"
-      : `≈ ${formatDistance(hit.distance)}`;
+      : onIt
+        ? "on it"
+        : `≈ ${formatDistance(hit.distance)}`;
   // No aria-label on the button: it would *replace* the name computed from
   // the row's contents, which is exactly the readout — theme, how it hit, and
   // the matched feature's attributes — that a screen reader is here for. The
@@ -714,9 +727,16 @@ function highlightLayer(id: string | null): void {
  * tested must be *named* in the answer, not dropped from it: "no drawn hazard
  * covers this point" would otherwise read as an all-clear for a fault layer
  * that never loaded. */
-function drawnLayerSets(): { inspectable: InspectLayer[]; unchecked: UncheckedLayer[] } {
+function drawnLayerSets(): { inspectable: InspectLayer[]; unchecked: UncheckedLayer[]; capped: Set<string> } {
   const inspectable: InspectLayer[] = [];
   const unchecked: UncheckedLayer[] = [];
+  // Layers whose service response hit ArcGIS's maxRecordCount — geoCache
+  // still holds every feature it *did* get, so a hit against those features
+  // is real, but a miss is not the clean "checked and clear" a plain "Not in"
+  // line claims: the truncated remainder might have covered the point. See
+  // splitCappedMisses, which turns a capped layer's miss into a caveat rather
+  // than a silent clean bill of health.
+  const capped = new Set<string>();
   for (const id of wanted) {
     const dataset = findById(id);
     if (!dataset) continue;
@@ -728,6 +748,7 @@ function drawnLayerSets(): { inspectable: InspectLayer[]; unchecked: UncheckedLa
       });
       continue;
     }
+    if (collection.exceededTransferLimit) capped.add(id);
     inspectable.push({
       id,
       label: label(dataset),
@@ -736,7 +757,29 @@ function drawnLayerSets(): { inspectable: InspectLayer[]; unchecked: UncheckedLa
       collection,
     });
   }
-  return { inspectable, unchecked };
+  return { inspectable, unchecked, capped };
+}
+
+/** Reclassify a capped layer's miss as a caveat rather than a clean "Not in":
+ * the features that loaded genuinely did not cover the point, but ArcGIS's
+ * maxRecordCount means the service withheld an unknown remainder that might
+ * have. A capped layer that *hits* is left alone — the feature that answered
+ * is real regardless of what else the service withheld; only its misses are
+ * downgraded from "checked and clear" to "not fully checked". Pure, and
+ * exported so src/inspect.test.ts can exercise the split directly — the
+ * caller only ever reaches it through DOM-guarded map state a node test
+ * cannot construct. */
+export function splitCappedMisses(
+  result: InspectResult,
+  cappedIds: ReadonlySet<string>,
+): { result: InspectResult; caveats: UncheckedLayer[] } {
+  if (cappedIds.size === 0) return { result, caveats: [] };
+  const misses = result.misses.filter((m) => !cappedIds.has(m.id));
+  const caveats = result.misses
+    .filter((m) => cappedIds.has(m.id))
+    .map((m) => ({ label: m.label, note: "service result capped" }));
+  if (caveats.length === 0) return { result, caveats };
+  return { result: { ...result, misses }, caveats };
 }
 
 /** Drop the inspector's own state — the mark, the highlight, the spoken
@@ -798,18 +841,20 @@ function closeInspector(): void {
  * nothing-drawn no-op. */
 function refreshInspector(): void {
   if (!inspectorPopup || !inspectorPoint || !view) return;
-  const { inspectable, unchecked } = drawnLayerSets();
+  const { inspectable, unchecked, capped } = drawnLayerSets();
   if (inspectable.length === 0) {
     closeInspector();
     return;
   }
   const [lon, lat] = inspectorPoint;
-  const result = inspectPoint(inspectorPoint, inspectable, toleranceForZoom(view.map.getZoom(), lat));
+  const raw = inspectPoint(inspectorPoint, inspectable, toleranceForZoom(view.map.getZoom(), lat));
+  const { result, caveats } = splitCappedMisses(raw, capped);
+  const pending = [...unchecked, ...caveats];
   inspectorFeatures.clear();
   for (const hit of result.hits) {
     if (hit.feature) inspectorFeatures.set(hit.id, hit.feature);
   }
-  const html = inspectorHtml(result, lat, lon, unchecked);
+  const html = inspectorHtml(result, lat, lon, pending);
   // Only rewrite when the answer actually changed: setContent rebuilds the
   // popup's DOM, which replays the entrance animation and drops the focus of
   // anyone keyboarding through the hit rows.
@@ -846,9 +891,22 @@ function refreshInspector(): void {
       }
       (target ?? nextElement?.querySelector<HTMLElement>(".leaflet-popup-close-button"))?.focus();
     }
-    announce(inspectionSummary(result, unchecked));
+    announce(inspectionSummary(result, pending));
   }
 }
+
+/** True while a focusFeature()-triggered zoom is in flight, so the zoomend
+ * listener in wireInspector does not re-answer the open inspection with a
+ * freshly-shrunk tolerance mid-flight. toleranceForZoom shrinks as zoom
+ * increases (it holds a constant *screen* distance, not ground distance), so
+ * flying in on a "near" hit — the whole point of activating its row — could
+ * otherwise shrink that hit's own tolerance below the distance that qualified
+ * it, flipping the popup to a contradictory "no drawn hazard covers this
+ * point" for the very feature the map has just centred on, and throwing focus
+ * to the close button in the process. A real, user-driven zoom (scroll,
+ * +/- controls) is never touched by this — only the automatic zoom this
+ * module's own flyToBounds/fitBounds triggers. */
+let suppressZoomRefresh = false;
 
 /** Frame the single feature that answered for a row. Same reduced-motion
  * contract as focusLayer: same destination, no flight. */
@@ -858,8 +916,18 @@ function focusFeature(L: LeafletModule, id: string): void {
   const bounds = L.geoJSON(feature).getBounds();
   if (!bounds.isValid()) return;
   const padding: [number, number] = [40, 40];
-  if (prefersReducedMotion()) view.map.fitBounds(bounds, { padding, maxZoom: 16 });
-  else view.map.flyToBounds(bounds, { padding, maxZoom: 16, duration: 0.7 });
+  const map = view.map;
+  suppressZoomRefresh = true;
+  const release = (): void => {
+    suppressZoomRefresh = false;
+  };
+  map.once("moveend", release);
+  // Fail-safe: if the feature is already fully framed, fitBounds/flyToBounds
+  // fire no move at all and `moveend` never comes — the flag must not then
+  // stay stuck suppressing the *next* genuine user-driven zoom.
+  setTimeout(release, 800);
+  if (prefersReducedMotion()) map.fitBounds(bounds, { padding, maxZoom: 16 });
+  else map.flyToBounds(bounds, { padding, maxZoom: 16, duration: 0.7 });
 }
 
 /** Hover/focus a row → that layer lights up on the map; activate it → the map
@@ -885,7 +953,7 @@ function wirePopupContent(L: LeafletModule, popup: Popup): void {
  * from the keyboard. With nothing drawn there is nothing to answer with, so
  * it is a no-op rather than an empty popup. */
 function inspectAt(L: LeafletModule, map: LeafletMap, at: LatLng): void {
-  const { inspectable, unchecked } = drawnLayerSets();
+  const { inspectable, unchecked, capped } = drawnLayerSets();
   // Nothing drawn yet — including the case where every switched-on layer is
   // still in flight — leaves the click a no-op rather than opening a popup
   // with no answer in it. Once the first layer lands, refreshInspector() is
@@ -899,15 +967,13 @@ function inspectAt(L: LeafletModule, map: LeafletMap, at: LatLng): void {
   // the popup itself stay at the *literal* latlng, so they still land exactly
   // under the cursor even when that click was on a wrapped copy of the world.
   const wrapped = at.wrap();
-  const result = inspectPoint(
-    [wrapped.lng, wrapped.lat],
-    inspectable,
-    toleranceForZoom(map.getZoom(), wrapped.lat),
-  );
+  const raw = inspectPoint([wrapped.lng, wrapped.lat], inspectable, toleranceForZoom(map.getZoom(), wrapped.lat));
+  const { result, caveats } = splitCappedMisses(raw, capped);
+  const pending = [...unchecked, ...caveats];
 
   closeInspector();
   inspectorPoint = [wrapped.lng, wrapped.lat];
-  inspectorMarkup = inspectorHtml(result, wrapped.lat, wrapped.lng, unchecked);
+  inspectorMarkup = inspectorHtml(result, wrapped.lat, wrapped.lng, pending);
   for (const hit of result.hits) {
     if (hit.feature) inspectorFeatures.set(hit.id, hit.feature);
   }
@@ -930,18 +996,36 @@ function inspectAt(L: LeafletModule, map: LeafletMap, at: LatLng): void {
     .setContent(inspectorMarkup)
     .openOn(map);
   wirePopupContent(L, inspectorPopup);
-  announce(inspectionSummary(result, unchecked));
+  announce(inspectionSummary(result, pending));
 }
 
 function wireInspector(L: LeafletModule, map: LeafletMap): void {
-  map.on("click", (event) => inspectAt(L, map, (event as LeafletMouseEvent).latlng));
+  map.on("click", (event) => {
+    const original = (event as LeafletMouseEvent).originalEvent;
+    // Leaflet's Map._fireDOMEvent snaps a click's `latlng` to a target
+    // marker's own getLatLng() whenever that marker's radius is <= 10px —
+    // exactly the radius-5 circleMarkers this map draws for point datasets.
+    // Using that snapped value would test (and place the popup at) the
+    // marker's exact centre for any click that lands near one, silently
+    // answering a different spot on the ground than the one actually
+    // clicked, and shifting the verdict for every *other* drawn layer along
+    // with it. Re-deriving the latlng from the raw DOM event keeps the
+    // inspector honest about where the cursor actually was; the keyboard
+    // path below has no such event and keeps using the view centre.
+    inspectAt(L, map, original ? map.mouseEventToLatLng(original) : (event as LeafletMouseEvent).latlng);
+  });
   // Tolerance is a function of zoom (toleranceForZoom), so an open popup's
   // "near" verdicts go stale the moment the user zooms without clicking again:
   // a fault line read as "≈ 84 m" at z13 may no longer be within tolerance at
   // z17. refreshInspector() already re-derives tolerance from the current zoom
   // and only touches the popup when the answer actually changed, so wiring it
-  // to zoomend keeps an open answer honest about the zoom it is shown at.
-  map.on("zoomend", refreshInspector);
+  // to zoomend keeps an open answer honest about the zoom it is shown at —
+  // except for the zoom focusFeature triggers on itself, which
+  // suppressZoomRefresh guards against (see its doc comment).
+  map.on("zoomend", () => {
+    if (suppressZoomRefresh) return;
+    refreshInspector();
+  });
   // Keyboard parity: Leaflet's own keyboard handler pans and zooms the focused
   // map but never synthesises a click, so without this the whole inspector
   // would be pointer-only. Enter inspects the centre of the current view —
