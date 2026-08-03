@@ -8,6 +8,7 @@
 //   #theme=<theme>         — the active theme filter (Dataset["theme"])
 //   #scope=<scope>         — the active scope filter (wcc/regional/national)
 //   #layers=<id>,<id>,...  — comma-separated ids of layers toggled on the map
+//   #query=<term>          — the free-text search query (src/filters.ts)
 // All keys are optional and independent; unknown keys are ignored on parse
 // (parseHash/getState never surface them, so this router never trips over a
 // key it doesn't know about) but setState() preserves them verbatim in the
@@ -19,9 +20,10 @@ export interface RouteState {
   theme?: string;
   scope?: string;
   layers?: string[];
+  query?: string;
 }
 
-const KEYS: (keyof RouteState)[] = ["dataset", "theme", "scope", "layers"];
+const KEYS: (keyof RouteState)[] = ["dataset", "theme", "scope", "layers", "query"];
 
 /** Parse a `location.hash`-shaped string (with or without the leading `#`)
  * into route state. Never throws — unknown keys, empty values and malformed
@@ -52,6 +54,9 @@ export function parseHash(hash: string): RouteState {
     if (list.length > 0) state.layers = list;
   }
 
+  const query = params.get("query");
+  if (query) state.query = query;
+
   return state;
 }
 
@@ -63,6 +68,7 @@ export function toHash(state: RouteState): string {
   if (state.theme) params.set("theme", state.theme);
   if (state.scope) params.set("scope", state.scope);
   if (state.layers && state.layers.length > 0) params.set("layers", state.layers.join(","));
+  if (state.query) params.set("query", state.query);
   const serialised = params.toString();
   return serialised ? `#${serialised}` : "";
 }

@@ -43,6 +43,22 @@ describe("parseHash", () => {
   it("decodes percent-encoded values", () => {
     expect(parseHash("#dataset=coastal%20inundation")).toEqual({ dataset: "coastal inundation" });
   });
+
+  it("parses the query key", () => {
+    expect(parseHash("#query=coastal%20flood")).toEqual({ query: "coastal flood" });
+  });
+
+  it("parses all five keys together", () => {
+    expect(
+      parseHash("#dataset=active-faults&theme=earthquake&scope=wcc&layers=a,b,c&query=fault"),
+    ).toEqual({
+      dataset: "active-faults",
+      theme: "earthquake",
+      scope: "wcc",
+      layers: ["a", "b", "c"],
+      query: "fault",
+    });
+  });
 });
 
 describe("toHash", () => {
@@ -61,6 +77,10 @@ describe("toHash", () => {
   it("percent-encodes values that need it", () => {
     expect(toHash({ dataset: "coastal inundation" })).toBe("#dataset=coastal+inundation");
   });
+
+  it("serialises the query key", () => {
+    expect(toHash({ query: "coastal flood" })).toBe("#query=coastal+flood");
+  });
 });
 
 describe("round-tripping", () => {
@@ -70,6 +90,8 @@ describe("round-tripping", () => {
     { theme: "flood", scope: "regional" },
     { dataset: "climate-mean-temp", theme: "climate", scope: "national", layers: ["climate-mean-temp"] },
     { layers: ["a", "b", "c"] },
+    { query: "coastal flood" },
+    { theme: "flood", scope: "wcc", query: "hazard zone" },
   ];
 
   for (const state of cases) {
@@ -120,6 +142,11 @@ describe("mergeHash", () => {
   it("joins and re-serialises layers, dropping the key when the patch empties it", () => {
     expect(mergeHash("#dataset=x", { layers: ["a", "b"] })).toBe("#dataset=x&layers=a%2Cb");
     expect(mergeHash("#dataset=x&layers=a%2Cb", { layers: [] })).toBe("#dataset=x");
+  });
+
+  it("sets and clears the query key like any other known key", () => {
+    expect(mergeHash("#theme=flood", { query: "hazard" })).toBe("#theme=flood&query=hazard");
+    expect(mergeHash("#theme=flood&query=hazard", { query: undefined })).toBe("#theme=flood");
   });
 
   it("returns an empty string when the merge leaves nothing behind", () => {

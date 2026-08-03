@@ -1,0 +1,794 @@
+/* Discovery console — the filter/search surface for src/filters.ts.
+ *
+ * Concept: a field-ops instrument strip. The catalogue is an emergency-
+ * management data feed, so the discovery layer is drawn like the panel above
+ * a dispatcher's desk: a live signal rail down the left edge, one big mono
+ * readout of "how many datasets are in view", and dense, hairline-ruled facet
+ * controls whose counts and proportion bars move as you narrow the feed.
+ *
+ * Everything below is dark-first (the ladder is authored for dark, then
+ * ported to light at the bottom of the token block) and hangs off the tokens
+ * in :root here plus --accent from style.css, which stays the product's one
+ * owned accent — no component ever hardcodes a colour. */
+
+:root {
+  /* Surface ladder: page (style.css --bg) → panel → raised → raised-2, in
+   * 4–6px luminance steps, never pure black and never flat grey. */
+  --flt-panel: #101a2c;
+  --flt-raised: #16233a;
+  --flt-raised-2: #1d2c47;
+  --flt-line: #23324c;
+  --flt-line-2: #2f4364;
+
+  /* Off-white ink, stepped down in luminance (not in opacity). */
+  --flt-ink: #e7edf8;
+  --flt-ink-2: #a4b5d0;
+  --flt-ink-3: #6f819f;
+
+  /* One owned accent, inherited from the app's token. */
+  --flt-signal: var(--accent);
+  --flt-on-signal: #061523;
+  --flt-shadow: 0 18px 40px rgba(2, 8, 20, 0.5);
+  --flt-veil: rgba(231, 237, 248, 0.07);
+
+  /* Paired type: sans for chrome, mono for every number/id/key hint. */
+  --flt-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --flt-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+
+  /* Type scale — 6 sizes, 3 weights (400/600/700), held to across the panel. */
+  --flt-fs-label: 10.5px;
+  --flt-fs-micro: 11px;
+  --flt-fs-chip: 12.5px;
+  --flt-fs-body: 13.5px;
+  --flt-fs-lead: 15px;
+  --flt-fs-readout: 28px;
+
+  --flt-fast: 120ms;
+  --flt-mid: 200ms;
+  --flt-ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --flt-panel: #ffffff;
+    --flt-raised: #f1f5fa;
+    --flt-raised-2: #e6edf6;
+    --flt-line: #dde5ef;
+    --flt-line-2: #c2cfe0;
+    --flt-ink: #0f172a;
+    --flt-ink-2: #48586f;
+    --flt-ink-3: #74839a;
+    --flt-on-signal: #f7fbff;
+    --flt-shadow: 0 18px 40px rgba(15, 23, 42, 0.14);
+    --flt-veil: rgba(15, 23, 42, 0.05);
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.ico {
+  flex: none;
+  display: block;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Console shell                                                           */
+/* ---------------------------------------------------------------------- */
+
+.console {
+  position: relative;
+  overflow: hidden;
+  margin: 16px 0 20px;
+  padding: 14px 16px 16px 20px;
+  background: var(--flt-panel);
+  border: 1px solid var(--flt-line);
+  border-radius: 14px;
+  font-family: var(--flt-sans);
+  color: var(--flt-ink);
+}
+
+/* The signal rail: idle at a stub, full-height the moment the feed is
+ * filtered. The only ambient piece of state in the panel. */
+.console__rail {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--flt-signal);
+  opacity: 0.35;
+  transform: scaleY(0.16);
+  transform-origin: top center;
+  transition: transform var(--flt-mid) var(--flt-ease), opacity var(--flt-mid) var(--flt-ease);
+}
+
+.console[data-filtered="true"] .console__rail {
+  opacity: 1;
+  transform: scaleY(1);
+}
+
+.console__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--flt-line);
+}
+
+.console__ident {
+  min-width: 0;
+  margin-right: auto;
+}
+
+/* The single highest-leverage "designed" move: tiny uppercase tracked label. */
+.console__label,
+.facet__label {
+  margin: 0;
+  font-size: var(--flt-fs-label);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--flt-ink-3);
+}
+
+.console__hint {
+  margin: 6px 0 0;
+  line-height: 1.9;
+  font-size: var(--flt-fs-micro);
+  font-weight: 400;
+  color: var(--flt-ink-3);
+}
+
+.console__hint kbd,
+.search-combobox__hint kbd {
+  display: inline-block;
+  min-width: 18px;
+  margin: 0 1px;
+  padding: 1px 5px;
+  font-family: var(--flt-mono);
+  font-size: 10px;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--flt-ink-2);
+  background: var(--flt-raised);
+  border: 1px solid var(--flt-line-2);
+  border-radius: 4px;
+}
+
+.console__readout {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+}
+
+.console__count {
+  font-family: var(--flt-mono);
+  font-size: var(--flt-fs-readout);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--flt-ink);
+}
+
+.console__total {
+  font-family: var(--flt-mono);
+  font-size: var(--flt-fs-chip);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--flt-ink-3);
+}
+
+.console__unit {
+  font-size: var(--flt-fs-label);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--flt-ink-3);
+}
+
+.console__count.is-tick {
+  animation: flt-tick var(--flt-mid) var(--flt-ease);
+}
+
+.console__clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-family: var(--flt-sans);
+  font-size: var(--flt-fs-chip);
+  font-weight: 600;
+  color: var(--flt-ink-2);
+  background: var(--flt-raised);
+  border: 1px solid var(--flt-line);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform var(--flt-fast) var(--flt-ease), color var(--flt-fast) linear,
+    border-color var(--flt-fast) linear;
+}
+
+.console__clear:hover {
+  color: var(--flt-ink);
+  border-color: var(--flt-line-2);
+  transform: translateY(-1px);
+}
+
+.console__clear:active {
+  transform: scale(0.97);
+}
+
+.console__clear[hidden] {
+  display: none;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Facets — instrument-dense: this is a surface for scanning and comparing */
+/* ---------------------------------------------------------------------- */
+
+.console__body {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px 24px;
+  padding-top: 12px;
+}
+
+.facet {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.facet--themes {
+  border-left: 1px solid var(--flt-line);
+  padding-left: 24px;
+}
+
+.seg {
+  position: relative;
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--flt-raised);
+  border: 1px solid var(--flt-line);
+  border-radius: 10px;
+}
+
+.seg__thumb {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  /* left:0 is the seg's padding edge — the same origin offsetLeft is measured
+   * from, so the JS translateX lands the thumb exactly on the active button. */
+  left: 0;
+  width: 100px;
+  background: var(--flt-signal);
+  border-radius: 8px;
+  transform-origin: left center;
+  transform: scaleX(0);
+  transition: transform var(--flt-mid) var(--flt-ease);
+  pointer-events: none;
+}
+
+.seg__btn {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-family: var(--flt-sans);
+  font-size: var(--flt-fs-chip);
+  font-weight: 600;
+  color: var(--flt-ink-2);
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--flt-fast) linear, transform var(--flt-fast) var(--flt-ease);
+}
+
+.seg__btn:hover {
+  color: var(--flt-ink);
+}
+
+.seg__btn:active {
+  transform: scale(0.97);
+}
+
+.seg__btn[aria-pressed="true"],
+.seg__btn[aria-pressed="true"] .facet-count {
+  color: var(--flt-on-signal);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 6px;
+  font-family: var(--flt-sans);
+  font-size: var(--flt-fs-chip);
+  font-weight: 600;
+  color: var(--flt-ink-2);
+  background: var(--flt-raised);
+  border: 1px solid var(--flt-line);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: transform var(--flt-fast) var(--flt-ease), color var(--flt-fast) linear,
+    background-color var(--flt-fast) linear, border-color var(--flt-fast) linear,
+    opacity var(--flt-fast) linear;
+}
+
+.chip:hover:not(:disabled) {
+  color: var(--flt-ink);
+  border-color: var(--flt-line-2);
+  transform: translateY(-1px);
+}
+
+.chip:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
+}
+
+.chip[aria-pressed="true"] {
+  color: var(--flt-ink);
+  background: color-mix(in srgb, var(--flt-signal) 16%, var(--flt-panel));
+  border-color: var(--flt-signal);
+}
+
+.chip:disabled {
+  opacity: 0.36;
+  cursor: not-allowed;
+}
+
+/* Status dot: dim pip when off, live signal when the facet is engaged. */
+.facet-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--flt-signal);
+  transform: scale(0.4);
+  opacity: 0.4;
+  transition: transform var(--flt-fast) var(--flt-ease), opacity var(--flt-fast) linear;
+}
+
+[aria-pressed="true"] > .facet-dot {
+  transform: scale(1);
+  opacity: 1;
+}
+
+.seg__btn[aria-pressed="true"] > .facet-dot {
+  background: var(--flt-on-signal);
+}
+
+.facet-text {
+  white-space: nowrap;
+  line-height: 1.25;
+}
+
+.facet-count {
+  font-family: var(--flt-mono);
+  font-size: var(--flt-fs-micro);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--flt-ink-3);
+  transition: color var(--flt-fast) linear;
+}
+
+.chip[aria-pressed="true"] .facet-count {
+  color: var(--flt-signal);
+}
+
+/* Proportion bar: each chip carries how much of the current view it holds. */
+.chip__bar {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 2px;
+  background: var(--flt-signal);
+  opacity: 0.55;
+  transform: scaleX(var(--fill, 0));
+  transform-origin: left center;
+  transition: transform var(--flt-mid) var(--flt-ease);
+}
+
+.chip[aria-pressed="true"] .chip__bar {
+  opacity: 1;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Empty state — a dead end always offers the way back out                 */
+/* ---------------------------------------------------------------------- */
+
+.console__empty {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 14px 16px;
+  background: var(--flt-raised);
+  border: 1px dashed var(--flt-line-2);
+  border-radius: 10px;
+  animation: flt-rise var(--flt-mid) var(--flt-ease) both;
+}
+
+.console__empty[hidden] {
+  display: none;
+}
+
+.console__empty-title {
+  margin: 0;
+  font-size: var(--flt-fs-lead);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--flt-ink);
+}
+
+.console__empty-body {
+  margin: 0;
+  max-width: 62ch;
+  font-size: var(--flt-fs-body);
+  font-weight: 400;
+  line-height: 1.55;
+  color: var(--flt-ink-2);
+}
+
+.btn-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 7px 12px;
+  font-family: var(--flt-sans);
+  font-size: var(--flt-fs-chip);
+  font-weight: 600;
+  color: var(--flt-on-signal);
+  background: var(--flt-signal);
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform var(--flt-fast) var(--flt-ease), opacity var(--flt-fast) linear;
+}
+
+.btn-reset:hover {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+.btn-reset:active {
+  transform: scale(0.97);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Skeleton — shapes that match the panel that replaces them               */
+/* ---------------------------------------------------------------------- */
+
+.skel {
+  position: relative;
+  overflow: hidden;
+  display: block;
+  background: var(--flt-raised);
+  border-radius: 999px;
+}
+
+.skel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, var(--flt-veil), transparent);
+  transform: translateX(-100%);
+  animation: flt-sweep 1.1s var(--flt-ease) infinite;
+}
+
+.skel--readout {
+  width: 104px;
+  height: 28px;
+  border-radius: 6px;
+}
+
+.skel--seg {
+  width: 268px;
+  height: 36px;
+  border-radius: 10px;
+}
+
+.skel--chip {
+  height: 28px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Search combobox (enhances the header's #search input)                   */
+/* ---------------------------------------------------------------------- */
+
+.search-combobox {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 12px;
+  padding-right: 10px;
+  background: var(--flt-panel);
+  border: 1px solid var(--flt-line);
+  border-radius: 10px;
+  transition: border-color var(--flt-fast) linear, box-shadow var(--flt-fast) linear;
+}
+
+.search-combobox:hover {
+  border-color: var(--flt-line-2);
+}
+
+.search-combobox:focus-within {
+  border-color: var(--flt-signal);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--flt-signal) 24%, transparent);
+}
+
+.search-combobox__icon {
+  display: inline-flex;
+  padding-left: 12px;
+  color: var(--flt-ink-3);
+}
+
+.search-combobox:focus-within .search-combobox__icon {
+  color: var(--flt-signal);
+}
+
+.search-combobox #search {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 10px 0;
+  font-family: var(--flt-sans);
+  font-size: var(--flt-fs-body);
+  color: var(--flt-ink);
+  background: none;
+  border: 0;
+}
+
+.search-combobox #search::placeholder {
+  color: var(--flt-ink-3);
+}
+
+.search-combobox #search:focus {
+  outline: none;
+}
+
+.search-combobox__hint {
+  display: inline-flex;
+  opacity: 1;
+  transition: opacity var(--flt-fast) linear;
+}
+
+.search-combobox:focus-within .search-combobox__hint {
+  opacity: 0;
+}
+
+.search-listbox {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 336px;
+  overflow-y: auto;
+  background: var(--flt-panel);
+  border: 1px solid var(--flt-line-2);
+  border-radius: 12px;
+  box-shadow: var(--flt-shadow);
+  animation: flt-rise 140ms var(--flt-ease) both;
+}
+
+.search-option {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color var(--flt-fast) linear;
+}
+
+.search-option__name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--flt-fs-body);
+  font-weight: 600;
+  color: var(--flt-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-option__meta {
+  font-family: var(--flt-mono);
+  font-size: var(--flt-fs-micro);
+  font-weight: 400;
+  color: var(--flt-ink-3);
+  white-space: nowrap;
+}
+
+.search-option__enter {
+  display: inline-flex;
+  align-self: center;
+  color: var(--flt-signal);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity var(--flt-fast) linear, transform var(--flt-fast) var(--flt-ease);
+}
+
+.search-option.is-active {
+  background: color-mix(in srgb, var(--flt-signal) 16%, var(--flt-panel));
+}
+
+.search-option.is-active .search-option__enter {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.search-option[data-selected="true"] .search-option__name {
+  color: var(--flt-signal);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Results layer — the card list in #app is rendered by main.ts, but        */
+/* selection and result-change motion belong to this ticket.               */
+/* ---------------------------------------------------------------------- */
+
+.ds {
+  /* `backwards`, not `both`: a finished animation with a forwards fill would
+   * keep overriding the hover lift below. */
+  animation: flt-rise 220ms var(--flt-ease) backwards;
+  animation-delay: calc(var(--i, 0) * 18ms);
+  transition: transform var(--flt-fast) var(--flt-ease), border-color var(--flt-fast) linear;
+}
+
+.ds:hover {
+  transform: translateY(-2px);
+  border-color: var(--flt-line-2);
+}
+
+.ds-select {
+  display: block;
+  width: 100%;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.ds-select:focus-visible,
+.chip:focus-visible,
+.seg__btn:focus-visible,
+.console__clear:focus-visible,
+.btn-reset:focus-visible {
+  outline: 2px solid var(--flt-signal);
+  outline-offset: 2px;
+}
+
+.ds.is-selected {
+  border-color: var(--flt-signal);
+  box-shadow: inset 3px 0 0 var(--flt-signal);
+}
+
+.ds.is-selected h3 {
+  color: var(--flt-signal);
+}
+
+@keyframes flt-tick {
+  from {
+    opacity: 0.35;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes flt-rise {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes flt-sweep {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Narrow screens: the facets stack, the rule turns horizontal             */
+/* ---------------------------------------------------------------------- */
+
+@media (max-width: 760px) {
+  .console {
+    padding: 12px 12px 14px 16px;
+  }
+
+  .console__body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .facet--themes {
+    border-left: 0;
+    border-top: 1px solid var(--flt-line);
+    padding-left: 0;
+    padding-top: 14px;
+  }
+
+  .seg {
+    flex-wrap: wrap;
+  }
+
+  /* A wrapped segmented control can't carry a sliding thumb honestly —
+   * fall back to per-segment fills so the active scope stays obvious. */
+  .seg__thumb {
+    display: none;
+  }
+
+  .seg__btn[aria-pressed="true"] {
+    background: var(--flt-signal);
+  }
+
+  .console__readout {
+    order: 3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .console__rail,
+  .console__count,
+  .console__clear,
+  .seg__thumb,
+  .seg__btn,
+  .chip,
+  .chip__bar,
+  .facet-dot,
+  .facet-count,
+  .btn-reset,
+  .console__empty,
+  .search-combobox,
+  .search-combobox__hint,
+  .search-combobox__icon,
+  .search-listbox,
+  .search-option,
+  .search-option__enter,
+  .skel::after,
+  .ds,
+  .ds-select {
+    transition-duration: 1ms;
+    animation: none;
+  }
+}
