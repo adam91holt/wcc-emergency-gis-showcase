@@ -189,7 +189,7 @@ export function getSelectedId(): string | undefined {
  * fresh history entry like any other filter change. */
 export function clearAll(): void {
   cancelPendingQuery();
-  setState({ theme: undefined, scope: undefined, query: undefined });
+  setState(patchForFilters({}));
   if (typeof document === "undefined") return;
   if (inputEl) inputEl.value = "";
   closeListbox();
@@ -756,8 +756,13 @@ function onGlobalKeydown(event: KeyboardEvent): void {
 function syncSearchInput(filters: FilterState): void {
   // `pendingQuery !== null` means the user's most recent keystrokes haven't
   // reached the hash yet — the input, not the URL, is the source of truth
-  // until they land.
-  if (!inputEl || pendingQuery !== null || document.activeElement === inputEl) return;
+  // until they land. Once they have, sync from route state even while the
+  // input still has focus: Back/Forward and hand-edited hashes must be able
+  // to correct the visible query, or a keyboard user who never blurred the
+  // combobox sees stale text that contradicts the URL and the results below
+  // it. The value-equality check below already no-ops when nothing changed,
+  // so this never disturbs an in-progress, not-yet-flushed edit.
+  if (!inputEl || pendingQuery !== null) return;
   const routeQuery = filters.query ?? "";
   if (inputEl.value !== routeQuery) inputEl.value = routeQuery;
 }
