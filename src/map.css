@@ -593,92 +593,340 @@
 }
 
 /* ---------------------------------------------------------------------- */
-/* Feature popup                                                           */
+/* Point inspector popup — "is *this* location affected?"                  */
+/*                                                                         */
+/* The densest surface in the console: a readout header, one ruled row per  */
+/* covering layer (swatch, name, theme, how it hit, the matched feature's   */
+/* attributes), then a single muted line for everything checked and clear.  */
+/* Same token ladder as the rack, so it reads as part of the instrument     */
+/* rather than a browser tooltip parked on top of it.                       */
 /* ---------------------------------------------------------------------- */
 
-.hazmap .hazpop-wrap .leaflet-popup-content-wrapper {
+.hazmap .hazins-wrap .leaflet-popup-content-wrapper {
   padding: 0;
   color: var(--haz-ink);
   background: var(--haz-panel);
   border: 1px solid var(--haz-line-2);
   border-radius: 12px;
   box-shadow: var(--haz-shadow);
+  overflow: hidden;
 }
 
-.hazmap .hazpop-wrap .leaflet-popup-content {
+.hazmap .hazins-wrap .leaflet-popup-content {
   margin: 0;
-  width: 260px !important;
+  /* Leaflet writes an inline width here, so the mobile clamp has to win. */
+  width: min(300px, calc(100vw - 72px)) !important;
 }
 
-.hazmap .hazpop-wrap .leaflet-popup-tip {
+.hazmap .hazins-wrap .leaflet-popup-tip {
   background: var(--haz-panel);
   border: 1px solid var(--haz-line-2);
 }
 
-.hazmap .hazpop-wrap a.leaflet-popup-close-button {
+.hazmap .hazins-wrap a.leaflet-popup-close-button {
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  font-size: 16px;
+  line-height: 20px;
   color: var(--haz-ink-3);
+  border-radius: 6px;
+  transition:
+    color var(--haz-fast) var(--haz-ease),
+    background-color var(--haz-fast) var(--haz-ease);
 }
 
-.hazpop {
-  padding: 12px 14px;
+.hazmap .hazins-wrap a.leaflet-popup-close-button:hover,
+.hazmap .hazins-wrap a.leaflet-popup-close-button:focus-visible {
+  color: var(--haz-ink);
+  background: var(--haz-raised-2);
 }
 
-.hazpop__label {
+/* The mark left on the tested spot while its answer is open: the popup is
+ * about *this* point, so the point stays visible. One slow ambient pulse in
+ * opacity only — no layout, no transform on an SVG path. */
+.hazins-mark {
+  stroke: var(--haz-signal);
+  stroke-width: 2;
+  fill: var(--haz-signal);
+  fill-opacity: 0.26;
+  animation: hazins-ping 2.2s var(--haz-ease) infinite;
+}
+
+.hazins {
+  padding: 11px 12px 12px;
+  /* Animate the inner shell, never the popup root: Leaflet owns the root's
+   * transform for positioning and zoom animation.
+   *
+   * `backwards`, not `both` — the same rule the result cards in filters.css
+   * follow. A forwards fill would leave `transform: translateY(0)` standing on
+   * this element for as long as the popup is open, which keeps the whole
+   * readout on its own composited layer at whatever fractional offset Leaflet
+   * has positioned the popup at (mono digits and 10.5px section labels are
+   * exactly the type that goes soft when that happens), and would win against
+   * any state style that wants to move it later. */
+  animation: haz-rise var(--haz-mid) var(--haz-ease) backwards;
+}
+
+.hazins__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  /* Clear of the close button, which Leaflet parks in the top-right. */
+  padding-right: 22px;
+}
+
+.hazins__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   margin: 0;
   font-size: var(--haz-fs-label);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--haz-ink-3);
+  color: var(--haz-signal);
 }
 
-.hazpop__title {
-  margin: 4px 0 8px;
-  font-size: var(--haz-fs-lead);
+.hazins__coord {
+  margin: 0;
+  font-family: var(--haz-mono);
+  font-size: var(--haz-fs-label);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  color: var(--haz-ink-3);
+  white-space: nowrap;
+}
+
+.hazins__verdict {
+  margin: 6px 0 0;
+  font-size: var(--haz-fs-body);
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--haz-ink);
+}
+
+.hazins[data-state="clear"] .hazins__verdict {
+  color: var(--haz-ink-2);
+}
+
+/* Near-only: every hit is a proximity read, never a containing polygon, so
+ * the verdict must not carry the same full-strength ink + lit-signal numbers
+ * as a genuine "in" — that combination is what a "covers" verdict owns. The
+ * label switches to "Near" in map.ts; this is the rest of the tell. */
+.hazins[data-state="near"] .hazins__verdict {
+  color: var(--haz-ink-2);
+}
+
+.hazins[data-state="near"] .hazins__num {
+  color: var(--haz-ink-2);
+}
+
+.hazins__num {
+  font-family: var(--haz-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--haz-signal);
+}
+
+.hazins__list {
+  display: grid;
+  gap: 2px;
+  margin: 8px 0 0;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--haz-line);
+  list-style: none;
+  max-height: 244px;
+  overflow-y: auto;
+}
+
+.hazhit {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 6px 6px 5px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+  transition:
+    background-color var(--haz-fast) var(--haz-ease),
+    transform var(--haz-fast) var(--haz-ease);
+}
+
+.hazhit:hover {
+  background: var(--haz-raised);
+  transform: translateX(1px);
+}
+
+.hazhit:focus-visible {
+  outline: 2px solid var(--haz-signal);
+  outline-offset: 1px;
+  background: var(--haz-raised);
+}
+
+.hazhit:active {
+  transform: translateX(1px) scale(0.99);
+  background: var(--haz-raised-2);
+}
+
+/* The colour key, straight off the layer's --swatch — the same token the
+ * rack row uses, so a layer can never be two colours. */
+.hazhit__key {
+  flex: 0 0 auto;
+  width: 3px;
+  margin-top: 2px;
+  border-radius: 2px;
+  background: var(--swatch, var(--haz-ink-3));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--swatch, var(--haz-ink-3)) 40%, transparent);
+}
+
+.hazhit__body {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.hazhit__name {
+  font-size: var(--haz-fs-chip);
   font-weight: 600;
   line-height: 1.3;
   color: var(--haz-ink);
 }
 
-.hazpop__grid {
-  display: grid;
-  gap: 4px;
-  margin: 0;
-  padding-top: 8px;
-  border-top: 1px solid var(--haz-line);
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-.hazpop__row {
-  display: grid;
-  grid-template-columns: 96px minmax(0, 1fr);
-  gap: 8px;
-}
-
-.hazpop__row dt {
+.hazhit__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
   font-size: var(--haz-fs-label);
-  font-weight: 700;
+  color: var(--haz-ink-3);
+}
+
+.hazhit__theme {
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--haz-ink-3);
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.hazpop__row dd {
-  margin: 0;
+.hazhit__mode {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  font-family: var(--haz-mono);
+  font-size: var(--haz-fs-label);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  border-radius: 4px;
+  /* Tinted by the layer's own colour, but the *text* stays on the ink ladder:
+   * the hazard key is tuned for the dark plate and would not carry contrast
+   * as type on the light port. */
+  color: var(--haz-ink);
+  background: color-mix(in srgb, var(--swatch, var(--haz-ink-3)) 20%, transparent);
+}
+
+.hazhit__mode[data-mode="near"] {
+  color: var(--haz-ink-2);
+  background: var(--haz-raised-2);
+}
+
+.hazhit__attrs {
+  display: grid;
+  gap: 1px;
+  margin-top: 2px;
+}
+
+.hazhit__attr {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 8px;
   font-family: var(--haz-mono);
   font-size: var(--haz-fs-micro);
   font-variant-numeric: tabular-nums;
-  color: var(--haz-ink-2);
-  overflow-wrap: anywhere;
 }
 
-.hazpop__empty {
-  margin: 0;
-  font-size: var(--haz-fs-micro);
+.hazhit__k {
   color: var(--haz-ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hazhit__v {
+  color: var(--haz-ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hazins__misses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--haz-line);
+  font-size: var(--haz-fs-micro);
+  line-height: 1.5;
+  color: var(--haz-ink-3);
+}
+
+/* The section label for the cleared layers. It separates itself from the
+ * names beside it by weight and tracking, not by opacity — secondary text on
+ * this console always steps down the ink ladder instead. */
+.hazins__misses-key {
+  font-size: var(--haz-fs-label);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--haz-ink-2);
+}
+
+/* The caveat: channels the user switched on that the inspector could not
+ * test. It is the one line here that must not read as quiet furniture — an
+ * unchecked hazard layer is the difference between "clear" and "unknown" — so
+ * it carries the alert icon and sits on a tinted, ruled plate. */
+.hazins__pending {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 6px 8px;
+  font-size: var(--haz-fs-micro);
+  line-height: 1.5;
+  color: var(--haz-ink-2);
+  background: color-mix(in srgb, var(--haz-signal) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--haz-signal) 34%, transparent);
+  border-radius: 7px;
+}
+
+.hazins__pending .ico {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--haz-signal);
+}
+
+.hazins__pending-key {
+  font-size: var(--haz-fs-label);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--haz-signal);
+}
+
+.hazins__nudge {
+  margin: 6px 0 0;
+  font-size: var(--haz-fs-micro);
+  line-height: 1.5;
+  color: var(--haz-ink-2);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -750,6 +998,16 @@
   }
 }
 
+@keyframes hazins-ping {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
 /* ---------------------------------------------------------------------- */
 /* Narrow screens: the rack drops under the plate and scrolls              */
 /* ---------------------------------------------------------------------- */
@@ -787,8 +1045,25 @@
   .hazlayer__name,
   .hazlayer__act,
   .hazskel::after,
-  .hazlayer[data-status="loading"] .hazlayer__status::after {
+  .hazlayer[data-status="loading"] .hazlayer__status::after,
+  .hazins,
+  .hazins-mark,
+  .hazhit,
+  .hazmap .hazins-wrap a.leaflet-popup-close-button {
     transition-duration: 1ms;
     animation: none;
+  }
+
+  /* Belt and braces: haz-rise is already `backwards` (so `animation: none`
+   * above leaves no fill behind), but the popup must be legible from its first
+   * frame even if that entrance ever gains a fill again. */
+  .hazins {
+    opacity: 1;
+    transform: none;
+  }
+
+  .hazhit:hover,
+  .hazhit:active {
+    transform: none;
   }
 }
