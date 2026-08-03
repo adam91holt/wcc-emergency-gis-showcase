@@ -89,14 +89,20 @@ export function chartDecision(state: RouteState, dataset: Dataset | null | undef
   return { show: true, reason: null };
 }
 
-/** The layer document of the variable's group layer — the cheapest description
- * of the scenario children (`subLayers: [{id, name}, …]`), rather than pulling
- * the whole 190-layer service tree down to read eight names off it. Null for a
- * dataset chartDecision() would have rejected. */
+/** The whole service's layer tree — every layer's own `type`, `parentLayerId`
+ * and `subLayerIds`, not just the variable's own group document. A single
+ * layer's own JSON (`{service_root}/{parent}?f=json`) lists its children only
+ * as `{id, name}` stubs with no `type`, so a variable whose group nests a
+ * further level (scenario group → time-horizon rasters) would have every
+ * child misread as a chartable leaf instead of walked through. Fetching the
+ * full tree once per dataset (memoised alongside the rest of the sample)
+ * gives `collectTree` each layer's real type and lets `selectScenarioLayers`
+ * walk nested groups correctly. Null for a dataset chartDecision() would have
+ * rejected. */
 export function scenarioTreeUrl(d: Dataset): string | null {
   const parent = parentLayerIndex(d);
   if (!d.service_root || parent == null) return null;
-  return `${d.service_root}/${parent}?f=json`;
+  return `${d.service_root}/layers?f=json`;
 }
 
 /** One `identify` call that samples every scenario raster at SAMPLE_POINT.
@@ -404,7 +410,13 @@ export function unitFromDescription(description: string | null | undefined): Uni
  * up in the tabular mono face. */
 export function formatChange(value: number, symbol: string | null): string {
   const magnitude = Math.abs(value);
-  const digits = magnitude >= 100 ? 0 : magnitude >= 10 ? 1 : 2;
+  let digits = magnitude >= 100 ? 0 : magnitude >= 10 ? 1 : 2;
+  // A real, non-zero change can still round away to "0.00" at the usual
+  // precision (0.004 °C, say) — the geometry deliberately keeps a bar like
+  // that visible (MIN_BAR_HEIGHT), so a sign-less "0.00" label contradicting
+  // a real bar is worse than a little extra precision. Widen the precision
+  // just enough for the value to read as the non-zero change it is.
+  while (digits < 6 && magnitude !== 0 && Number(magnitude.toFixed(digits)) === 0) digits++;
   const rounded = magnitude.toFixed(digits);
   const sign = value > 0 ? "+" : value < 0 ? "−" : "±";
   return symbol ? `${sign}${rounded} ${symbol}` : `${sign}${rounded}`;
@@ -661,6 +673,33 @@ export function serviceErrorMessage(body: unknown): string | null {
   return typeof message === "string" && message.trim() !== "" ? message.trim() : "service error";
 }
 
+/** Whether a body plausibly *is* an ArcGIS layer-tree response — a
+ * service-tree body carries a `layers` array, a single-layer body carries the
+ * layer's own numeric `id`. A body that has neither (an empty object, a
+ * truncated proxy response, a schema the service changed under us) is not a
+ * "this group has no scenario children" answer, it's a broken response — so
+ * `sample()` treats it as an error rather than caching it as a real, if
+ * empty, series. `selectScenarioLayers` itself stays lenient (it never
+ * throws, so a genuinely malformed body handed to it directly still yields
+ * `[]` rather than an exception); this is the stricter check the live fetch
+ * path applies before it will accept a body as ground truth at all. */
+export function isScenarioTreeBody(body: unknown): boolean {
+  const record = asRecord(body);
+  if (!record) return false;
+  if (Array.isArray(record.layers)) return true;
+  return typeof record.id === "number" && Number.isInteger(record.id);
+}
+
+/** Whether a body plausibly *is* an ArcGIS `identify` response — `results`
+ * may legitimately be an empty array (nothing chartable at this point), but
+ * it must be an array at all. A body without one is a broken response, not a
+ * "every raster returned NoData" answer, so `sample()` errors on it instead
+ * of reporting a confident (and false) all-NoData readout. */
+export function isIdentifyResponseBody(body: unknown): boolean {
+  const record = asRecord(body);
+  return record !== null && Array.isArray(record.results);
+}
+
 async function fetchJson(url: string, signal: AbortSignal): Promise<unknown> {
   const res = await fetch(url, { signal });
   if (!res.ok) throw new Error(`service responded ${res.status}`);
@@ -685,12 +724,16 @@ async function sample(d: Dataset, signal: AbortSignal): Promise<ChartSeries> {
   const parent = parentLayerIndex(d);
   if (!treeUrl || parent == null) throw new Error("no scenario layers to sample");
 
-  const layers = selectScenarioLayers(await fetchJson(treeUrl, signal), parent);
+  const treeBody = await fetchJson(treeUrl, signal);
+  if (!isScenarioTreeBody(treeBody)) throw new Error("service returned an unrecognised layer-tree response");
+  const layers = selectScenarioLayers(treeBody, parent);
   if (layers.length === 0) return { layers, values: new Map() };
 
   const url = identifyUrl(d, layers.map((l) => l.id));
   if (!url) return { layers, values: new Map() };
-  return { layers, values: parseIdentifyValues(await fetchJson(url, signal)) };
+  const identifyBody = await fetchJson(url, signal);
+  if (!isIdentifyResponseBody(identifyBody)) throw new Error("service returned an unrecognised identify response");
+  return { layers, values: parseIdentifyValues(identifyBody) };
 }
 
 function abortInflight(id: string): void {
@@ -717,20 +760,33 @@ function loadSeries(d: Dataset, refresh = false): Promise<ChartSeries> {
     () => controller.abort(new DOMException("Timed out", "AbortError")),
     SAMPLE_TIMEOUT_MS,
   );
-  const request = sample(d, controller.signal)
+  // `entry` is captured by both settle handlers below so each only ever
+  // clears *its own* slot. Without this, aborting dataset A's request and
+  // immediately starting a fresh one for the same id (e.g. A→B→A in quick
+  // succession) races: the old request's handler still runs, keyed by
+  // `d.id` alone, and deletes the entry the new request just registered —
+  // leaving the live request untracked (a later abort becomes a no-op) and
+  // letting a concurrent loadSeries() for the same id issue a duplicate
+  // pair of requests instead of sharing this one.
+  let entry!: { promise: Promise<ChartSeries>; controller: AbortController };
+  const settle = (): void => {
+    if (inflight.get(d.id) === entry) inflight.delete(d.id);
+  };
+  const promise = sample(d, controller.signal)
     .then((series) => {
       clearTimeout(timer);
       seriesCache.set(d.id, series);
-      inflight.delete(d.id);
+      settle();
       return series;
     })
     .catch((error) => {
       clearTimeout(timer);
-      inflight.delete(d.id);
+      settle();
       throw error;
     });
-  inflight.set(d.id, { promise: request, controller });
-  return request;
+  entry = { promise, controller };
+  inflight.set(d.id, entry);
+  return promise;
 }
 
 // ---------------------------------------------------------------------------
@@ -753,12 +809,13 @@ function coordText(): string {
  * never a blank flash. */
 function chartSkeleton(): string {
   const heights = [38, 52, 61, 74, 58, 79, 96, 112];
-  return `<div class="clm__skeleton" aria-hidden="true">
-      <span class="cskel cskel--readout"></span>
-      <div class="clm__skelbars">
+  return `<div class="clm__skeleton">
+      <p class="clm__loadingtext">Sampling the modelled climate scenarios…</p>
+      <span class="cskel cskel--readout" aria-hidden="true"></span>
+      <div class="clm__skelbars" aria-hidden="true">
         ${heights.map((h) => `<span class="cskel cskel--bar" style="height:${h}px"></span>`).join("")}
       </div>
-      <span class="cskel cskel--axis"></span>
+      <span class="cskel cskel--axis" aria-hidden="true"></span>
     </div>`;
 }
 
@@ -831,7 +888,7 @@ function readoutHtml(model: ChartModel): string {
       <span class="clm__peak">${escapeHtml(peak.text)}</span>
       <span class="clm__sep"></span>
       <span class="clm__peaklabel">strongest projected change<span class="clm__peakscenario">${escapeHtml(rest)}</span></span>
-      <span class="clm__n">${model.points.length}<span class="clm__unit">scenarios</span></span>
+      <span class="clm__n">${model.points.length}<span class="clm__unit">${model.points.length === 1 ? "scenario" : "scenarios"}</span></span>
     </p>`;
 }
 

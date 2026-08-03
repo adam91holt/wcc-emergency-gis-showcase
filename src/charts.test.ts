@@ -6,6 +6,8 @@ import renderCharts, {
   chartHtml,
   formatChange,
   identifyUrl,
+  isIdentifyResponseBody,
+  isScenarioTreeBody,
   parentLayerIndex,
   parseHorizon,
   parseIdentifyValue,
@@ -322,6 +324,45 @@ describe("formatChange", () => {
     expect(formatChange(124.6, "GDD")).toBe("+125 GDD");
     expect(formatChange(1.4, null)).toBe("+1.40");
   });
+
+  it("widens precision rather than rounding a real sub-cent change to a sign-less zero", () => {
+    expect(formatChange(0.004, "°C")).toBe("+0.004 °C");
+    expect(formatChange(-0.004, "°C")).toBe("−0.004 °C");
+    expect(formatChange(0.00006, "°C")).toBe("+0.0001 °C");
+    // A true zero still reads as the plain, two-decimal "±0.00" — only a
+    // non-zero value that would otherwise vanish gets the extra digits.
+    expect(formatChange(0, "°C")).toBe("±0.00 °C");
+  });
+});
+
+describe("isScenarioTreeBody", () => {
+  it("accepts a service-wide layer tree and a single layer document", () => {
+    expect(isScenarioTreeBody(serviceTree)).toBe(true);
+    expect(isScenarioTreeBody(parentDocument)).toBe(true);
+    expect(isScenarioTreeBody({ id: 0, name: "Layer zero", subLayers: [] })).toBe(true);
+  });
+
+  it("rejects a body with neither a layers array nor its own id — a broken response, not an empty tree", () => {
+    expect(isScenarioTreeBody({})).toBe(false);
+    expect(isScenarioTreeBody(null)).toBe(false);
+    expect(isScenarioTreeBody("<html>502 Bad Gateway</html>")).toBe(false);
+    expect(isScenarioTreeBody({ layers: "not an array" })).toBe(false);
+    expect(isScenarioTreeBody({ error: { message: "Layer not found" } })).toBe(false);
+  });
+});
+
+describe("isIdentifyResponseBody", () => {
+  it("accepts any results array, including an empty one", () => {
+    expect(isIdentifyResponseBody({ results: [] })).toBe(true);
+    expect(isIdentifyResponseBody({ results: [{ layerId: 127, value: "0.72" }] })).toBe(true);
+  });
+
+  it("rejects a body with no results array — a broken response, not an all-NoData answer", () => {
+    expect(isIdentifyResponseBody({})).toBe(false);
+    expect(isIdentifyResponseBody({ results: "none" })).toBe(false);
+    expect(isIdentifyResponseBody(null)).toBe(false);
+    expect(isIdentifyResponseBody({ error: { message: "Invalid parameters" } })).toBe(false);
+  });
 });
 
 describe("buildChartModel", () => {
@@ -468,7 +509,7 @@ describe("service URLs", () => {
     expect(d.layer_id).toBe(126);
     expect(d.default_child).toBe(127);
     expect(parentLayerIndex(d)).toBe(126);
-    expect(scenarioTreeUrl(d)).toBe(`${d.service_root}/126?f=json`);
+    expect(scenarioTreeUrl(d)).toBe(`${d.service_root}/layers?f=json`);
   });
 
   it("samples every scenario layer at Wellington in one identify call", () => {

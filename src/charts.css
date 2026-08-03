@@ -473,6 +473,12 @@
 /* Skeleton — bars on the same baseline the real strip draws                 */
 /* ------------------------------------------------------------------------ */
 
+.clm__loadingtext {
+  margin: 0 0 12px;
+  font-size: var(--clm-fs-micro);
+  color: var(--clm-ink-3);
+}
+
 .cskel {
   position: relative;
   overflow: hidden;
