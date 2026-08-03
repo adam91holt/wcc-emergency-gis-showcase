@@ -6,60 +6,267 @@
     <meta name="color-scheme" content="dark light" />
     <meta
       name="description"
-      content="An explorable showcase of 67 public Wellington Emergency Management GIS datasets — coastal inundation, flooding, active faults, landslides, sea level rise and climate projections."
+      content="An explorable board of 67 public Wellington Emergency Management GIS datasets — coastal inundation, flooding, active faults, landslides, sea level rise and climate projections."
     />
-    <title>WCC Emergency GIS — Data Showcase</title>
+    <title>Hazard Board — Wellington Emergency Management GIS</title>
+
+    <!-- Paired type: Space Grotesk carries headings and chrome, Inter carries
+         prose, IBM Plex Mono carries every figure. Loaded as one request; each
+         stack in theme.css falls back to a real local face if this fails. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap"
+    />
+
     <link rel="stylesheet" href="/src/style.css" />
+
+    <!-- Theme boot. Runs before first paint so an explicitly chosen theme never
+         flashes the OS default. Deliberately a small classic script rather than
+         a module: it must be synchronous, and no feature module should ever have
+         to re-open this file to add a toggle. -->
+    <script>
+      (function () {
+        var root = document.documentElement;
+        var KEY = "wcc-gis-theme";
+
+        function resolved() {
+          var explicit = root.getAttribute("data-theme");
+          if (explicit === "light" || explicit === "dark") return explicit;
+          return window.matchMedia &&
+            window.matchMedia("(prefers-color-scheme: light)").matches
+            ? "light"
+            : "dark";
+        }
+
+        try {
+          var saved = localStorage.getItem(KEY);
+          if (saved === "light" || saved === "dark") {
+            root.setAttribute("data-theme", saved);
+          }
+        } catch (e) {
+          /* storage blocked (private mode) — fall back to the OS preference */
+        }
+
+        function sync(button) {
+          var isDark = resolved() === "dark";
+          button.setAttribute("aria-pressed", String(isDark));
+          button.setAttribute(
+            "aria-label",
+            isDark ? "Dark theme on. Switch to light." : "Light theme on. Switch to dark.",
+          );
+        }
+
+        document.addEventListener("DOMContentLoaded", function () {
+          var button = document.querySelector("[data-theme-toggle]");
+          if (!button) return;
+          sync(button);
+          button.addEventListener("click", function () {
+            var next = resolved() === "dark" ? "light" : "dark";
+            root.setAttribute("data-theme", next);
+            try {
+              localStorage.setItem(KEY, next);
+            } catch (e) {
+              /* preference is session-only when storage is unavailable */
+            }
+            sync(button);
+          });
+        });
+      })();
+    </script>
   </head>
   <body>
     <a class="skip-link" href="#app">Skip to dataset catalogue</a>
-    <header class="site-header">
-      <div class="site-header__inner">
-        <p class="eyebrow">Wellington Emergency Management</p>
-        <h1>GIS Data Showcase</h1>
-        <p class="lede">
-          <strong><span id="total">—</span></strong> public datasets covering coastal inundation, flooding,
-          active faults, landslides, sea level rise and climate projections — spanning city, regional and
-          national scope.
-        </p>
-        <div class="search-shell">
-          <label class="visually-hidden" for="search">Search datasets</label>
-          <input id="search" type="search" placeholder="Search datasets…" autocomplete="off" />
+
+    <!-- The app's single icon set: one 24px grid, 1.6 stroke, round caps and
+         joins. Every icon in the product comes from here — no second library,
+         no emoji standing in for a glyph. -->
+    <svg class="icon-sprite" aria-hidden="true" focusable="false">
+      <symbol id="icon-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="10.5" cy="10.5" r="6.5" />
+        <path d="M15.4 15.4 21 21" />
+      </symbol>
+      <symbol id="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="4.2" />
+        <path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6" />
+      </symbol>
+      <symbol id="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20.5 14.3A8.6 8.6 0 0 1 9.7 3.5a8.6 8.6 0 1 0 10.8 10.8Z" />
+      </symbol>
+      <symbol id="icon-external" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 4h6v6" />
+        <path d="M20 4 11 13" />
+        <path d="M18 14.5V19a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 19V7.5A1.5 1.5 0 0 1 5.5 6H10" />
+      </symbol>
+    </svg>
+
+    <header class="masthead">
+      <div class="masthead__inner">
+        <div class="masthead__top">
+          <a class="brand" href="./">
+            <!-- Contour rings cut by a fault trace: the mark states the
+                 product (terrain data) and its accent thesis in one shape. -->
+            <svg class="brand__mark" viewBox="0 0 40 40" fill="none" aria-hidden="true" focusable="false">
+              <circle cx="20" cy="20" r="16.4" stroke="currentColor" stroke-width="1.4" opacity="0.45" />
+              <circle cx="20" cy="20" r="11" stroke="currentColor" stroke-width="1.4" opacity="0.7" />
+              <circle cx="20" cy="20" r="5.6" stroke="currentColor" stroke-width="1.4" />
+              <path
+                class="mark-fault"
+                d="M6 27.5 14.5 22l3.5 4.4 5.2-8.6 4 3.2L34 11"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            <span class="brand__text">
+              <span class="brand__org">Wellington Emergency Management</span>
+              <span class="brand__name">Hazard Board</span>
+            </span>
+          </a>
+
+          <button
+            class="button button--ghost button--icon theme-toggle"
+            type="button"
+            data-theme-toggle
+            aria-pressed="true"
+            aria-label="Dark theme on. Switch to light."
+          >
+            <svg class="icon theme-toggle__icon theme-toggle__icon--sun" aria-hidden="true" focusable="false">
+              <use href="#icon-sun" />
+            </svg>
+            <svg class="icon theme-toggle__icon theme-toggle__icon--moon" aria-hidden="true" focusable="false">
+              <use href="#icon-moon" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="masthead__body">
+          <h1>Wellington's public hazard GIS, on one board</h1>
+          <p class="lede">
+            Every ArcGIS layer Wellington's emergency planners work from — coastal inundation,
+            flooding, active faults, landslides, sea level rise and climate projections —
+            indexed in one place and searchable by name, authority or coverage.
+          </p>
+        </div>
+
+        <div class="masthead__tools">
+          <div class="search">
+            <label class="visually-hidden" for="search">Search datasets</label>
+            <svg class="icon search__icon" aria-hidden="true" focusable="false">
+              <use href="#icon-search" />
+            </svg>
+            <input id="search" type="search" placeholder="Search by name, authority or area…" autocomplete="off" />
+          </div>
+
+          <dl class="ledger">
+            <div class="ledger__stat">
+              <dt class="stat__label">Datasets</dt>
+              <!-- main.ts writes the live catalogue total here; until it does,
+                   style.css renders a figure-shaped skeleton in its place. -->
+              <dd class="stat__value"><span id="total"></span></dd>
+            </div>
+            <div class="ledger__stat">
+              <dt class="stat__label">Channels</dt>
+              <dd class="stat__value">7</dd>
+            </div>
+            <div class="ledger__stat">
+              <dt class="stat__label">Tiers</dt>
+              <dd class="stat__value">3</dd>
+            </div>
+          </dl>
         </div>
       </div>
+      <div class="masthead__rule" aria-hidden="true"></div>
     </header>
+
     <main>
-      <section class="hero panel" aria-labelledby="hero-heading">
-        <h2 id="hero-heading" class="hero__heading">What's in this showcase</h2>
-        <p class="hero__body">
-          Every dataset below is a live reference into Wellington's public emergency-management GIS layers —
-          hazard extents, exposure models and climate time series maintained by council and national science
-          agencies. Browse by theme, or search by name, authority or coverage area.
-        </p>
-        <div class="hero__legend cluster" role="list" aria-label="Hazard themes in this catalogue">
-          <span class="badge" role="listitem" style="--dot-color: var(--hazard-coastal_inundation)">
-            <span class="badge__dot" aria-hidden="true"></span>Coastal Inundation
-          </span>
-          <span class="badge" role="listitem" style="--dot-color: var(--hazard-flood)">
-            <span class="badge__dot" aria-hidden="true"></span>Flood Data
-          </span>
-          <span class="badge" role="listitem" style="--dot-color: var(--hazard-landslide)">
-            <span class="badge__dot" aria-hidden="true"></span>Landslides
-          </span>
-          <span class="badge" role="listitem" style="--dot-color: var(--hazard-earthquake)">
-            <span class="badge__dot" aria-hidden="true"></span>Earthquake Hazard
-          </span>
-          <span class="badge" role="listitem" style="--dot-color: var(--hazard-sea_level_rise)">
-            <span class="badge__dot" aria-hidden="true"></span>Sea Level Rise
-          </span>
-          <span class="badge" role="listitem" style="--dot-color: var(--hazard-climate)">
-            <span class="badge__dot" aria-hidden="true"></span>Climate Data
-          </span>
-          <span class="badge" role="listitem" style="--dot-color: var(--hazard-other)">
-            <span class="badge__dot" aria-hidden="true"></span>Other
-          </span>
+      <section class="hero panel" aria-labelledby="hero-title">
+        <div class="hero__lead">
+          <p class="eyebrow">Briefing</p>
+          <h2 id="hero-title" class="hero__title">
+            Hazard data for Wellington is published by three agencies, in seven themes,
+            across <em>67 separate services</em>.
+          </h2>
+          <p class="hero__body">
+            This board pulls all of them into one index. Each entry is a live reference into a
+            public ArcGIS service — hazard extents, exposure models and climate time series
+            maintained by council and national science agencies. Colour carries the meaning:
+            a card's leading edge names the tier that publishes it, and each theme owns a
+            channel hue used consistently across the map, filters and charts.
+          </p>
+        </div>
+
+        <div class="hero__keys">
+          <div class="hero__key-group">
+            <p class="eyebrow" id="channel-key-label">Hazard channels</p>
+            <ul class="channel-index" aria-labelledby="channel-key-label">
+              <li class="channel" style="--channel-color: var(--hazard-coastal_inundation)">
+                <span class="channel__text">
+                  <span class="channel__name">Coastal Inundation</span>
+                  <span class="channel__key">coastal_inundation</span>
+                </span>
+              </li>
+              <li class="channel" style="--channel-color: var(--hazard-flood)">
+                <span class="channel__text">
+                  <span class="channel__name">Flood Data</span>
+                  <span class="channel__key">flood</span>
+                </span>
+              </li>
+              <li class="channel" style="--channel-color: var(--hazard-landslide)">
+                <span class="channel__text">
+                  <span class="channel__name">Landslides</span>
+                  <span class="channel__key">landslide</span>
+                </span>
+              </li>
+              <li class="channel" style="--channel-color: var(--hazard-earthquake)">
+                <span class="channel__text">
+                  <span class="channel__name">Earthquake Hazard</span>
+                  <span class="channel__key">earthquake</span>
+                </span>
+              </li>
+              <li class="channel" style="--channel-color: var(--hazard-sea_level_rise)">
+                <span class="channel__text">
+                  <span class="channel__name">Sea Level Rise</span>
+                  <span class="channel__key">sea_level_rise</span>
+                </span>
+              </li>
+              <li class="channel" style="--channel-color: var(--hazard-climate)">
+                <span class="channel__text">
+                  <span class="channel__name">Climate Data</span>
+                  <span class="channel__key">climate</span>
+                </span>
+              </li>
+              <li class="channel" style="--channel-color: var(--hazard-other)">
+                <span class="channel__text">
+                  <span class="channel__name">Other Useful Data</span>
+                  <span class="channel__key">other</span>
+                </span>
+              </li>
+            </ul>
+          </div>
+
+          <div class="hero__key-group">
+            <p class="eyebrow" id="scope-key-label">Publishing tier — the stripe on each card</p>
+            <ul class="scope-key" aria-labelledby="scope-key-label">
+              <li class="scope-key__item" style="--scope-color: var(--scope-wcc)">
+                <span class="scope-key__swatch" aria-hidden="true"></span>
+                City — Wellington City Council
+              </li>
+              <li class="scope-key__item" style="--scope-color: var(--scope-regional)">
+                <span class="scope-key__swatch" aria-hidden="true"></span>
+                Regional — Greater Wellington
+              </li>
+              <li class="scope-key__item" style="--scope-color: var(--scope-national)">
+                <span class="scope-key__swatch" aria-hidden="true"></span>
+                National — GNS &amp; agencies
+              </li>
+            </ul>
+          </div>
         </div>
       </section>
+
       <!-- filters-root: owned by the filter-panel ticket (theme/scope facet controls). -->
       <div id="filters-root" role="region" aria-label="Filters"></div>
       <!-- map-root: owned by the map ticket (interactive map of mappable datasets). -->
@@ -68,19 +275,75 @@
       <div id="detail-root" role="region" aria-label="Dataset detail"></div>
       <!-- charts-root: owned by the charts ticket (climate time-series charts). -->
       <div id="charts-root" role="region" aria-label="Charts"></div>
-      <!-- app: the seed's theme-grouped catalogue card list, rendered by src/main.ts. -->
-      <div id="app"></div>
+      <!-- app: the seed's theme-grouped catalogue card list, rendered by src/main.ts.
+           The skeleton below occupies the exact silhouette of the first row of
+           cards and is replaced wholesale the moment main.ts renders. -->
+      <div id="app">
+        <div class="grid" aria-hidden="true">
+          <div class="skeleton-card">
+            <span class="skeleton skeleton--title" style="inline-size: 78%"></span>
+            <span class="skeleton skeleton--text" style="inline-size: 54%"></span>
+            <span class="skeleton skeleton--text" style="inline-size: 34%"></span>
+          </div>
+          <div class="skeleton-card">
+            <span class="skeleton skeleton--title" style="inline-size: 64%"></span>
+            <span class="skeleton skeleton--text" style="inline-size: 60%"></span>
+            <span class="skeleton skeleton--text" style="inline-size: 34%"></span>
+          </div>
+          <div class="skeleton-card">
+            <span class="skeleton skeleton--title" style="inline-size: 86%"></span>
+            <span class="skeleton skeleton--text" style="inline-size: 48%"></span>
+            <span class="skeleton skeleton--text" style="inline-size: 34%"></span>
+          </div>
+          <div class="skeleton-card">
+            <span class="skeleton skeleton--title" style="inline-size: 70%"></span>
+            <span class="skeleton skeleton--text" style="inline-size: 56%"></span>
+            <span class="skeleton skeleton--text" style="inline-size: 34%"></span>
+          </div>
+        </div>
+        <noscript>
+          <p class="noscript">
+            This board renders its catalogue in the browser. Enable JavaScript to search and
+            browse the 67 datasets, or read them directly from the
+            <a href="https://github.com/claudecommunity-nz/wcc-emergency-gis-data">source repository</a>.
+          </p>
+        </noscript>
+      </div>
     </main>
+
     <footer class="site-footer">
       <div class="site-footer__inner">
-        <p class="site-footer__sources">
-          Data sources:
-          <a href="https://github.com/claudecommunity-nz/wcc-emergency-gis-data" target="_blank" rel="noreferrer">Wellington City Council</a
-          >, Greater Wellington Regional Council, GNS Science.
-        </p>
-        <p>Built by the autonomous factory.</p>
+        <div class="site-footer__group">
+          <p class="eyebrow">Data sources</p>
+          <div class="sources">
+            <a class="source" href="https://wellington.govt.nz" target="_blank" rel="noreferrer">
+              <svg class="icon icon--sm" aria-hidden="true" focusable="false"><use href="#icon-external" /></svg>
+              <span><span class="source__org">Wellington City Council</span> — city hazard and exposure layers</span>
+            </a>
+            <a class="source" href="https://www.gw.govt.nz" target="_blank" rel="noreferrer">
+              <svg class="icon icon--sm" aria-hidden="true" focusable="false"><use href="#icon-external" /></svg>
+              <span><span class="source__org">Greater Wellington Regional Council</span> — regional flood and coastal data</span>
+            </a>
+            <a class="source" href="https://www.gns.cri.nz" target="_blank" rel="noreferrer">
+              <svg class="icon icon--sm" aria-hidden="true" focusable="false"><use href="#icon-external" /></svg>
+              <span><span class="source__org">GNS Science</span> — active faults and national geohazard models</span>
+            </a>
+          </div>
+        </div>
+
+        <div class="site-footer__group">
+          <p class="eyebrow">About</p>
+          <p>
+            Catalogue bundled verbatim from
+            <a href="https://github.com/claudecommunity-nz/wcc-emergency-gis-data" target="_blank" rel="noreferrer"
+              >wcc-emergency-gis-data</a
+            >.
+          </p>
+          <p>Not an official council service. Always check the source for currency before relying on a layer.</p>
+        </div>
       </div>
     </footer>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

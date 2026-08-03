@@ -1,157 +1,313 @@
 # Design tokens
 
 The shared visual vocabulary for the WCC Emergency GIS Data Showcase lives in
-`src/theme.css` as CSS custom properties, and `src/style.css` is built
-entirely on top of it. Every sibling feature module (map, dataset detail,
-filters, charts) should consume these tokens rather than hard-coding a hex
-value, a pixel size, or a duration — that's what keeps four independently
-shipped tickets reading as one product.
+`src/theme.css` as CSS custom properties, and `src/style.css` is built entirely
+on top of it. Every sibling feature module (map, dataset detail, filters,
+charts) should consume these tokens rather than hard-coding a hex value, a
+pixel size, or a duration — that is what keeps four independently shipped
+tickets reading as one product.
 
-Scope: this file documents shared-chrome tokens only. Feature modules own
-their own component CSS files and may add module-scoped tokens/classes
-alongside them, but should not redefine anything below.
+`theme.css` holds the **only** raw hex values and the **only** raw pixel
+literals in the codebase. If you find yourself typing `#` or `px` outside it,
+either an existing token fits or a new one belongs in `theme.css`.
+
+Scope: this file documents shared-chrome tokens only. Feature modules own their
+own component CSS files and may add module-scoped classes alongside them, but
+should not redefine anything below.
+
+---
+
+## The concept: "situation board"
+
+The app is dressed as an emergency-management wall display. Concretely, that
+means five recurring moves — match them and your module will look native:
+
+1. **Near-black instrument surfaces** with hairline rules doing the separating,
+   not drop shadows.
+2. **Uppercase micro-labels** (`.eyebrow`) titling every region, with a
+   hairline running out to the edge of that region.
+3. **Tabular monospace figures** for every number, so counts do not jitter as
+   the catalogue re-renders on each keystroke.
+4. **A channel colour system** — one hue per hazard theme, one stripe colour
+   per publishing tier — carried consistently across map, filters and cards.
+5. **One ambient signal sweep** along the masthead rule. It is the only looping
+   animation in the product; do not add a second.
+
+---
 
 ## Theming
 
 The app is **dark-first**: `:root` in `theme.css` (no media query, no
-attribute) *is* the dark palette — it's the default and fallback for any
-browser or embedding context that doesn't understand `prefers-color-scheme`.
-Light mode layers on top, in ascending precedence:
+attribute) *is* the dark palette — the default and the fallback for any browser
+or embedding context that does not understand `prefers-color-scheme`. Light
+mode is a deliberate port, not an inversion, and layers on in ascending
+precedence:
 
-1. `:root` — dark (default)
-2. `@media (prefers-color-scheme: light)` — light, when the OS asks for it
-3. `html[data-theme="light"]` / `html[data-theme="dark"]` — explicit
-   override, wins regardless of OS preference
+| Layer | Selector | Wins over |
+| --- | --- | --- |
+| Dark (designed default) | `:root` | — |
+| Light, OS-driven | `@media (prefers-color-scheme: light) :root` | the default |
+| Explicit override | `html[data-theme="light" \| "dark"]` | both |
 
-No toggle ships yet. A future one is a single line —
-`document.documentElement.dataset.theme = "light"` — with zero CSS changes,
-because the `data-theme` selectors are already live.
+A small classic script in `index.html` reads `localStorage["wcc-gis-theme"]`
+before first paint and sets `data-theme` on `<html>`, so an explicitly chosen
+theme never flashes the OS default. The masthead toggle writes it back.
+**Feature modules never need to know which theme is active** — read tokens and
+you are correct in both.
+
+> The light ramp is intentionally duplicated between the media query and the
+> `[data-theme="light"]` block. CSS cannot express "media query OR attribute"
+> in one selector. Change one, change the other.
+
+---
 
 ## Colour
 
-### Surfaces
+### Surfaces — a ladder, climb it
 
-Near-black (dark) / near-white (light) ladder, four steps of luminance.
-Prefer hairline `--border` over `box-shadow` to separate surfaces on dark —
-shadows are reserved for things that visually float above the page (the
-hero panel, future dropdowns/popovers).
+| Token | Use |
+| --- | --- |
+| `--surface-0` | Page background. Nothing else. |
+| `--surface-1` | Masthead, footer, `.panel`, hero. |
+| `--surface-2` | Raised things on a panel: cards, inputs, the channel index. |
+| `--surface-3` | Hover / pressed state of a `--surface-2` element; badge fills. |
+| `--surface-inset` | Wells and troughs that sit *below* the page. |
 
-| Token         | Use                                              |
-| ------------- | ------------------------------------------------ |
-| `--surface-0` | Page background                                  |
-| `--surface-1` | Header / footer / structural chrome              |
-| `--surface-2` | Raised content: cards, panels                     |
-| `--surface-3` | Hover/active state of a raised surface            |
-| `--border`    | Hairline separators, default borders              |
-| `--border-strong` | Emphasised border (hover, input focus lead-in) |
+### Borders
 
-### Text
+`--border` is the default hairline; `--border-strong` marks hover, focus-within
+and any edge that needs to read as deliberate. Always at `--border-width`.
 
-Off-white/near-black, stepped **down in luminance** — never opacity — for
-secondary/tertiary text, so contrast stays predictable.
+### Text — steps down in luminance, never in opacity
 
-| Token             | Use                                            | Min. contrast on `--surface-0/1/2` |
-| ------------------ | ---------------------------------------------- | ----------------------------------- |
-| `--text-primary`   | Body copy, headings                            | ≥ 14.4:1 (both modes)               |
-| `--text-secondary` | Secondary copy, descriptions                   | ≥ 7.7:1 (both modes)                |
-| `--text-tertiary`  | Meta, timestamps, counts                       | ≥ 4.4:1 (both modes, incl. `--surface-3` hover) |
+| Token | Use | Contrast (dark / light, on `--surface-0`) |
+| --- | --- | --- |
+| `--text-primary` | Headings, card titles, values | 17.1:1 / 16.1:1 |
+| `--text-secondary` | Body copy, lede, footer links | 9.2:1 / 7.5:1 |
+| `--text-tertiary` | Eyebrows, meta lines, placeholders | 6.6:1 / 5.2:1 |
 
-`--text-tertiary` is tuned to clear 4.5:1 body-text AA against every shared
-surface it's actually used on — including `--surface-3` (the `.ds:hover`
-background), the tightest case. If a future use puts it on a *lighter*
-surface than `--surface-3` (dark) / a darker one than `--surface-0` (light),
-re-check contrast before shipping — don't assume the margin carries over.
+Never use `opacity` to make text quieter — it breaks against a tinted surface.
+All three clear WCAG AA (4.5:1) against `--surface-0` **and** `--surface-3` in
+both modes.
 
 ### The one owned accent
 
-`--accent` / `--accent-hover` / `--accent-fg` is the single interactive
-colour: links, the primary button, the focus ring, the active search border.
-It is amber/orange in both modes — an emergency-signal colour that fits the
-domain — but the *shade* changes per theme to hold ≥ 4.5:1 against body text
-sizes:
+`--accent` (emergency signal amber) is the product's colour. It owns live and
+active state, the fault line in the brand mark, headline figures, and focus.
+Nothing else competes with it.
 
-- Dark: `--accent: #ffa63d` on `--surface-0/2` ≥ 8.3:1; use `--accent-fg`
-  (near-black) as text/icon colour drawn on top of it.
-- Light: `--accent: #a3540a` on `--surface-0/1` ≥ 5.1:1; use `--accent-fg`
-  (near-white) on top of it.
+| Token | Use |
+| --- | --- |
+| `--accent` | The accent itself |
+| `--accent-hover` / `--accent-pressed` | Interactive states of an accent fill |
+| `--accent-fg` | Text/icons drawn **on top of** `--accent` |
+| `--accent-quiet` | Low-alpha tint fill (selected rows, active chips) |
+| `--accent-line` | Low-alpha tint hairline, underlines, selection |
 
-Don't introduce a second interactive colour for "just this one button" —
-extend `--accent` usage instead.
+Status colours are limited to `--success` and `--danger`. Resist adding a
+third: six accents means zero accents.
 
-### Hazard-category accents
+### Hazard channels
 
-Seven tokens, one per `Dataset["theme"]` value in `src/catalogue.ts`
-(`coastal_inundation`, `flood`, `landslide`, `earthquake`, `sea_level_rise`,
-`climate`, `other`). These identify a hazard category at a glance — a
-`.badge__dot`, a thin left border on a theme section heading — and are
-**decorative swatches, not text colours**: nothing renders hazard-coloured
-text directly against a surface, so they aren't held to the text-contrast
-table above. Keep new uses to small dots/borders/outlines; they should never
-compete with `--accent` for primary interactive attention (six accents is
-zero accents).
+One hue per `Dataset["theme"]` from `src/catalogue.ts`. Token names match the
+theme key exactly, so a module can build the variable name from data:
 
-### Status
+```css
+.layer { border-inline-start-color: var(--hazard-flood); }
+```
 
-`--success` / `--danger` cover the only other semantic colours the shell
-needs. Don't add a third.
+```ts
+el.style.setProperty("--channel-color", `var(--hazard-${dataset.theme})`);
+```
 
-## Typography
+`--hazard-coastal_inundation`, `--hazard-flood`, `--hazard-landslide`,
+`--hazard-earthquake`, `--hazard-sea_level_rise`, `--hazard-climate`,
+`--hazard-other`.
 
-Two families, differentiated by weight/tracking/case rather than a second
-webfont (no self-hosted fonts ship in this ticket's file set):
+Every hue is verified ≥ 4.5:1 against both `--surface-0` and `--surface-3` in
+both modes, so a channel name may be **set** in its own colour, not merely
+swatched. Use them for identity — a stripe, a dot, a series line, a section
+rule. Never for primary interactive attention; that is `--accent`'s job.
 
-- `--font-sans` — body copy and headings. Headings use `--weight-bold` +
-  `--tracking-tight` to read as "display" without a second typeface.
-- `--font-mono` — figures: dataset counts, the `.count` badge. Numbers use
-  `font-variant-numeric: tabular-nums` wherever they can change (search
-  results, counts) so digits don't jitter width.
+### Scope stripes
 
-Type scale (`--text-xs` … `--text-2xl`, ~1.25 modular ratio), line-heights
-(`--leading-tight/snug/normal`) and weights (`--weight-regular` …
-`--weight-bold`) are enumerated in `theme.css` with their intended use
-inline. `--tracking-eyebrow` (0.08em, uppercase) is reserved for the small
-uppercase section labels (`.eyebrow`) — the single highest-leverage
-"designed" typographic move; don't reuse it for body text.
+`--scope-wcc`, `--scope-regional`, `--scope-national` map `Dataset["scope"]` to
+the stripe down a card's leading edge (`--edge-width`). They alias hues already
+in the palette, so the product's total colour count does not grow. The hero's
+scope key is what teaches the reader to decode them — keep it in sync if you
+change one.
 
-## Spacing & radii
+---
 
-8px-based scale, `--space-1` (4px, hairline gaps) through `--space-8`
-(64px, section breathing room). Every margin/padding/gap in shared chrome
-resolves to one of these — no bespoke pixel values. Radii: `--radius-sm`
-(controls), `--radius-md` (cards, inputs), `--radius-lg` (panels/hero),
-`--radius-full` (pills, dots).
+## Type
+
+Three families, a real hierarchy, and a strict rule about which does what.
+
+| Token | Family | Carries |
+| --- | --- | --- |
+| `--font-display` | Space Grotesk | Headings, chrome, eyebrows, buttons, card titles |
+| `--font-sans` | Inter | Prose and body copy |
+| `--font-mono` | IBM Plex Mono | Every figure, id, service path and code token |
+
+Loaded via a single `<link>` in `index.html`; each stack falls back to a real
+local face if that request fails.
+
+### Scale
+
+| Token | Size | Use |
+| --- | --- | --- |
+| `--text-2xs` | 11px | Uppercase eyebrows, legend keys, stat captions, card meta |
+| `--text-xs` | 12px | Badges, footer, source links, counts |
+| `--text-sm` | 14px | Dense card body, secondary controls, hero body |
+| `--text-base` | 16px | Body copy (the `body` default) |
+| `--text-md` | 18px | Lede paragraphs, brand name |
+| `--text-lg` | 22px | Section headings |
+| `--text-xl` | 28px | Panel titles, ledger figures |
+| `--text-2xl` | 36px | Page heading |
+| `--text-3xl` | fluid | Reserved for a full-bleed statement |
+
+Weights are `--weight-regular` 400, `--weight-medium` 500,
+`--weight-semibold` 600, `--weight-bold` 700 — do not introduce a fifth.
+Line heights: `--leading-tight` (headings), `--leading-snug` (ledes, card
+titles), `--leading-normal` (prose). Tracking: `--tracking-tight` on display
+headings, `--tracking-eyebrow` (0.09em) on every uppercase micro-label.
+
+Add `.num` to any element containing a figure to get the mono face plus
+`tabular-nums`.
+
+---
+
+## Space, radii, line weights
+
+`--space-0` … `--space-8` is an 8px rhythm on a 4px grid: 0, 4, 8, 12, 16, 24,
+32, 48, 64px. **Every** margin, padding and gap in the app is one of these.
+Off-grid spacing is the single loudest "template default" tell.
+
+Density is chosen per surface, not globally:
+
+- **Scanning/comparing surfaces** (the ledger, the card grid, the channel
+  index) are tight — `--space-2` / `--space-3` gaps, hairline-ruled.
+- **Reading/deciding surfaces** (the hero briefing, the empty state) breathe —
+  `--space-5` / `--space-6` padding and a capped measure.
+
+Radii: `--radius-sm` 6px (inputs, chips, skeletons), `--radius-md` 10px
+(buttons, cards), `--radius-lg` 16px (panels), `--radius-full` (pills, dots).
+
+Line weights: `--border-width` 1px (all hairlines), `--rule-width` 2px (eyebrow
+rules, the masthead sweep track), `--edge-width` 3px (the scope stripe).
+
+## Layout
+
+| Token | Value | Use |
+| --- | --- | --- |
+| `--content-width` | 72rem (84rem ≥ 100rem viewport) | The outer content column |
+| `--prose-width` | 62ch | `max-inline-size` on any run of prose |
+| `--lede-width` | 54ch | Short, large statements |
+| `--search-width` | 34rem | The search field's cap |
+| `--card-min` | 15rem | `auto-fill` track floor for the card grid |
+| `--channel-min` | 9.5rem | `auto-fill` track floor for the channel index |
+| `--tap-min` | 2.75rem (44px) | Minimum interactive target (WCAG 2.5.5) |
+| `--icon-size` / `--icon-size-sm` | 20 / 16px | Icon box |
+| `--brand-mark` | 40px | The masthead mark |
+| `--dot-size` | 8px | Badge dots |
+
+`--content-width` widens to 84rem past a 100rem viewport (set in `theme.css`).
+The shell is verified from 360px to ultrawide with no horizontal scroll.
+
+> Breakpoint *conditions* are the one unavoidable literal in `style.css` — CSS
+> custom properties are not valid inside a media query condition. Everything a
+> query *sets* is still a token.
+
+---
 
 ## Elevation
 
-`--shadow-sm/md/lg` are tuned per theme (very low-opacity black on dark,
-low-opacity cool grey on light) and are for things that float above the
-page — not a substitute for `--border` on regular cards.
+`--shadow-sm` / `--shadow-md` / `--shadow-lg`, driven by `--shadow-color`.
+On dark, hairlines do nearly all the separating and shadows only whisper;
+in light mode the same tokens carry more of the load. Reach for a border
+before you reach for a shadow.
 
-## Focus ring
+---
 
-Defined once, globally, on `:focus-visible` in `style.css` using
-`--focus-ring-color` (= `--accent`), `--focus-ring-width` (2px) and
-`--focus-ring-offset` (2px). Don't redefine `outline` in a feature module
-unless you also restore this ring — every focusable element in the app,
-including ones feature modules add later, should show it.
+## Focus
+
+Defined **once**, in `style.css`, on `:focus-visible`, and inherited by every
+focusable element in the app. Do not restyle focus in a component.
+
+- `--focus-ring-color` (the accent), `--focus-ring-width` 2px,
+  `--focus-ring-offset` 2px — the outline form.
+- `--focus-ring` — the composed `box-shadow` form, for controls that already
+  own their outline or that sit inside a clipped container.
+
+If your module renders a custom control, make sure it is a real focusable
+element and do **not** set `outline: none` without substituting `--focus-ring`.
+
+---
 
 ## Motion
 
-`--duration-fast` (120ms, feedback), `--duration-base` (200ms, default
-transitions) and `--duration-slow` (320ms, view-level animation like the
-hero's entrance), paired with `--ease-standard` / `--ease-out`. Only animate
-`transform`/`opacity` — never layout properties. Every token collapses to
-~0 under `@media (prefers-reduced-motion: reduce)` (set once, in
-`theme.css`), and `style.css` additionally zeroes all `animation`/
-`transition` durations under the same query as a global safety net — a new
-component that uses a hard-coded `transition: 200ms` instead of the token
-won't get this for free, so always reach for the token.
+`transform` and `opacity` only — never animate layout properties.
 
-## Utilities (`style.css`)
+| Token | Value | Use |
+| --- | --- | --- |
+| `--duration-fast` | 120ms | Hover / press feedback |
+| `--duration-base` | 200ms | Control state change |
+| `--duration-slow` | 320ms | Element enter |
+| `--duration-shimmer` | 1400ms | Skeleton sheen cycle |
+| `--duration-ambient` | 7s | The masthead sweep — the only ambient loop |
+| `--stagger-step` | 24ms | Per-item delay in a staggered list |
 
-`.stack` (vertical gap via flex-column, `--stack-space` overridable),
-`.cluster` (wrapping horizontal group, `--cluster-space` overridable),
-`.visually-hidden` (screen-reader-only), `.badge` (+ `.badge__dot`, coloured
-via `--dot-color`), `.button` (primary, accent-filled, ≥44px touch target),
-`.panel` (raised surface + hairline border + `--shadow-sm`). Reach for these
-before writing new one-off layout CSS in a feature module.
+Easings: `--ease-standard`, `--ease-out`, `--ease-spring` (for things that
+should feel like they have mass). Composites `--transition-colors` and
+`--transition-transform` cover most needs.
+
+**Reduced motion is handled centrally.** `theme.css` collapses the duration
+tokens to ~0 under `prefers-reduced-motion: reduce`, and `style.css` stops
+looping animations outright (a 0.01ms loop would strobe rather than settle). If
+you express timing with the tokens above, your module is already compliant —
+you do not need your own media query.
+
+---
+
+## Utilities in `style.css`
+
+| Class | Purpose |
+| --- | --- |
+| `.stack` | Vertical flow with a consistent gap; override `--stack-space` |
+| `.cluster` | Horizontal group that wraps; override `--cluster-space` |
+| `.panel` | Panel surface + hairline + radius + soft shadow |
+| `.eyebrow` | Uppercase micro-label with a hairline running to the edge |
+| `.prose` | Capped measure + secondary text colour |
+| `.badge` / `.badge__dot` | Pill label; set `--dot-color` for the dot |
+| `.button` | Accent action; `.button--ghost` quiet; `.button--icon` square |
+| `.icon` / `.icon--sm` | Icon box, sized from tokens |
+| `.visually-hidden` | Screen-reader-only text |
+| `.num` | Mono + tabular figures |
+| `.skeleton`, `.skeleton--text`, `.skeleton--title`, `.skeleton-card` | The loading convention |
+
+### Icons
+
+The app has **one** icon set: an inline `<symbol>` sprite at the top of
+`index.html`, drawn on a 24px grid with a 1.6 stroke and round caps/joins.
+Reference one with `<svg class="icon"><use href="#icon-search" /></svg>`. Add
+new glyphs to that sprite in the same style. Do not pull in an icon library,
+and never use an emoji in place of a glyph.
+
+### Loading
+
+Anything async gets a **skeleton shaped like its result**, so the layout does
+not jump when content lands — never a bare spinner, a blank flash, or a
+"Loading…" string. Compose `.skeleton` blocks into the silhouette of your
+panel; `.skeleton-card` already matches a `.ds` card exactly. The sheen is a
+`translateX` on a pseudo-element, so it stays on the compositor.
+
+Two live examples ship in the shell: the `#total` figure renders a
+figure-shaped placeholder until `main.ts` writes the real count, and `#app`
+holds a four-card skeleton grid that `main.ts` replaces wholesale on its first
+render.
+
+### Mount points
+
+`#filters-root`, `#map-root`, `#detail-root` and `#charts-root` are
+`display: none` while empty, so the shell stays clean until your module mounts.
+Render content into your root and the region appears — no shell change needed.

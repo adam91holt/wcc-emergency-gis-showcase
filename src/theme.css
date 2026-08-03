@@ -1,96 +1,70 @@
 /* Design tokens for the WCC Emergency GIS Data Showcase.
  *
- * Every colour, size and timing value the shared chrome uses lives here as a
- * custom property. Feature modules (map/detail/filters/charts) should reach
- * for these tokens rather than inventing new hex values or magic pixel
- * numbers — see docs/design-tokens.md for the full catalogue and intended
- * use of each group below.
+ * Every colour, size, weight and timing value the app uses lives here as a
+ * custom property. This file holds the *only* raw hex values and the only raw
+ * pixel/rem literals in the codebase — style.css and every feature module
+ * (map/detail/filters/charts) must consume these tokens rather than inventing
+ * their own. See docs/design-tokens.md for the guided tour.
  *
- * Theming: the app is dark-first — the bare `:root` block below (no media
- * query, no attribute) IS the dark palette, so anything that doesn't
- * understand `prefers-color-scheme` still gets a deliberate look. Light mode
- * is layered on in three ways, in this order of precedence:
- *   1. `:root`                                   — dark (the default/fallback)
- *   2. `@media (prefers-color-scheme: light)`     — light, when the OS asks for it
- *   3. `html[data-theme="light" | "dark"]`        — explicit override, wins
- *      over both of the above regardless of OS preference. No toggle ships
- *      in this ticket, but the attribute is live today so a future
- *      light/dark switch is a one-line `document.documentElement.dataset.theme
- *      = "light"` with zero CSS changes.
+ * ---------------------------------------------------------------------------
+ * DESIGN CONCEPT — "situation board"
+ * ---------------------------------------------------------------------------
+ * The showcase is dressed as an emergency-management wall display: a near-black
+ * instrument surface, hairline rules instead of drop shadows, uppercase
+ * micro-labels over every region, tabular monospace figures so counts never
+ * jitter between renders, and a per-hazard "channel" colour system that lets a
+ * reader triangulate a dataset's category from its edge stripe alone. One
+ * ambient signal sweep along the masthead rule says the board is live.
+ *
+ * ---------------------------------------------------------------------------
+ * THEMING
+ * ---------------------------------------------------------------------------
+ * Dark is the designed mode; light is a deliberate port, not an inversion.
+ * The bare `:root` block below (no media query, no attribute) IS the dark
+ * palette, so anything that doesn't understand `prefers-color-scheme` still
+ * gets a considered look. Precedence, lowest to highest:
+ *   1. `:root`                                — dark (default / fallback)
+ *   2. `@media (prefers-color-scheme: light)` — light, when the OS asks
+ *   3. `html[data-theme="light"|"dark"]`      — explicit override, always wins
+ *
+ * MAINTENANCE NOTE: the light ramp is deliberately duplicated — once in the
+ * media query, once under `[data-theme="light"]`. CSS cannot express "media
+ * query OR attribute selector" in a single selector, and the alternatives
+ * (the custom-property space-toggle hack, or `light-dark()` plus a full
+ * fallback ladder) cost more legibility than the duplication does. Change one,
+ * change the other.
  */
 
 :root {
   color-scheme: dark;
 
-  /* ---- Colour: surfaces (near-black ladder, 4-6 step luminance jumps) ---- */
-  --surface-0: #0b0f14; /* page background */
-  --surface-1: #121820; /* header/footer/panel background */
-  --surface-2: #1a212b; /* raised: cards, the dataset grid */
-  --surface-3: #232b36; /* hover/active state of a raised surface */
+  /* ==== TYPE: three families, four weights, one modular scale =============
+   * --font-display carries headings and chrome. Space Grotesk's flat
+   * terminals and squared bowls read as technical/cartographic, which is the
+   * point — it is the voice of the board.
+   * --font-sans carries prose.
+   * --font-mono carries every figure, id and code path so digits stay tabular
+   * and never jitter as the catalogue re-renders on each keystroke.
+   * Loaded via <link> in index.html; each stack degrades to a real local face.
+   */
+  --font-display: "Space Grotesk", "Segoe UI Variable Display", "Segoe UI",
+    system-ui, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", "Cascadia Code",
+    "Segoe UI Mono", Menlo, Consolas, "Liberation Mono", monospace;
 
-  /* ---- Colour: borders (hairlines, not shadows, separate dark surfaces) --- */
-  --border: #262e39;
-  --border-strong: #3a4452;
-
-  /* ---- Colour: text (off-white, stepped down in luminance, never opacity) - */
-  --text-primary: #eef2f6;
-  --text-secondary: #aab5c0;
-  --text-tertiary: #8a95a1; /* AA at 4.5:1 against every dark surface incl. hover, see docs */
-
-  /* ---- Colour: the one owned accent (emergency-signal amber) ---- */
-  --accent: #ffa63d;
-  --accent-hover: #ffb85c; /* lighter = "closer" on dark surfaces */
-  --accent-fg: #1a1206; /* text/icons drawn on top of --accent */
-
-  /* ---- Colour: hazard-category identity (catalogue.ts Dataset["theme"]) --
-   * Small, restrained uses only — a swatch dot, a 3px left border on a
-   * theme section heading, a badge outline. They identify a category at a
-   * glance; they never compete with --accent for primary interactive
-   * attention (see docs/design-tokens.md "hazard accents" for the rule). */
-  --hazard-coastal_inundation: #38bdf8;
-  --hazard-flood: #3b82f6;
-  --hazard-landslide: #d97706;
-  --hazard-earthquake: #f43f5e;
-  --hazard-sea_level_rise: #22d3ee;
-  --hazard-climate: #4ade80;
-  --hazard-other: #94a3b8;
-
-  /* ---- Colour: status (kept to two, per the "six accents = zero" rule) --- */
-  --success: #4ade80;
-  --danger: #f87171;
-
-  /* ---- Elevation: hairline-first; shadows only for things that float ---- */
-  --shadow-color: 0deg 0% 0%;
-  --shadow-sm: 0 1px 2px hsl(var(--shadow-color) / 0.4);
-  --shadow-md: 0 8px 24px -4px hsl(var(--shadow-color) / 0.45);
-  --shadow-lg: 0 24px 48px -8px hsl(var(--shadow-color) / 0.55);
-
-  /* ---- Focus: one ring, defined once, inherited by every interactive el -- */
-  --focus-ring-color: var(--accent);
-  --focus-ring-width: 2px;
-  --focus-ring-offset: 2px;
-
-  /* ---- Type: paired families (display carries weight/tracking, mono
-   * carries figures) — self-hosted webfonts are out of scope for this
-   * ticket's file list, so the "pairing" is expressed through weight,
-   * tracking and case rather than a second typeface. ---- */
-  --font-sans:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica,
-    Arial, sans-serif;
-  --font-mono:
-    ui-monospace, "SF Mono", "Cascadia Code", "Segoe UI Mono", Menlo, Consolas,
-    "Liberation Mono", monospace;
-
-  /* ---- Type: modular scale (~1.25 ratio), one set of sizes for the whole
-   * shell. Feature modules should pick from this scale rather than adding
-   * their own font-size literals. ---- */
-  --text-xs: 0.75rem; /* 12px — meta, timestamps, counts */
-  --text-sm: 0.875rem; /* 14px — secondary body, labels */
+  /* Modular scale (~1.25). --text-2xs is reserved for the uppercase eyebrow
+   * that titles every region — the single highest-leverage "designed" move. */
+  --text-2xs: 0.6875rem; /* 11px — eyebrows, legend keys, stat captions */
+  --text-xs: 0.75rem; /* 12px — meta lines, badges, footnotes */
+  --text-sm: 0.875rem; /* 14px — dense card body, secondary controls */
   --text-base: 1rem; /* 16px — body copy */
-  --text-md: 1.125rem; /* 18px — lead paragraph, card titles */
+  --text-md: 1.125rem; /* 18px — lede paragraphs, card titles */
   --text-lg: 1.375rem; /* 22px — section headings */
-  --text-xl: 1.75rem; /* 28px — page heading (h1) at rest */
-  --text-2xl: 2.25rem; /* 36px — hero heading, wide viewports */
+  --text-xl: 1.75rem; /* 28px — panel titles */
+  --text-2xl: 2.25rem; /* 36px — page heading */
+  --text-3xl: clamp(2.25rem, 1.5rem + 3.2vw, 3.25rem); /* hero statement */
 
   --leading-tight: 1.15;
   --leading-snug: 1.35;
@@ -101,11 +75,11 @@
   --weight-semibold: 600;
   --weight-bold: 700;
 
-  --tracking-tight: -0.01em; /* headings */
+  --tracking-tight: -0.02em; /* display headings */
   --tracking-normal: 0;
-  --tracking-eyebrow: 0.08em; /* uppercase section labels */
+  --tracking-eyebrow: 0.09em; /* uppercase micro-labels */
 
-  /* ---- Space: 8px-based scale (half-step at 4px for hairline gaps) ---- */
+  /* ==== SPACE: 8px rhythm on a 4px grid =================================== */
   --space-0: 0;
   --space-1: 0.25rem; /* 4px */
   --space-2: 0.5rem; /* 8px */
@@ -116,22 +90,124 @@
   --space-7: 3rem; /* 48px */
   --space-8: 4rem; /* 64px */
 
-  /* ---- Radii ---- */
+  /* ==== RADII & LINE WEIGHTS ============================================== */
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 16px;
   --radius-full: 999px;
 
-  /* ---- Motion: transform/opacity only, never layout props ---- */
-  --duration-fast: 120ms;
-  --duration-base: 200ms;
-  --duration-slow: 320ms;
-  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
-  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --border-width: 1px; /* every hairline in the app */
+  --rule-width: 2px; /* eyebrow rules, the masthead sweep track */
+  --edge-width: 3px; /* the scope stripe down a card's leading edge */
 
-  /* ---- Layout ---- */
+  /* ==== LAYOUT: named so nothing hard-codes a width or a target size ====== */
   --content-width: 72rem;
   --prose-width: 62ch;
+  --lede-width: 54ch;
+  --search-width: 34rem;
+  --card-min: 15rem; /* auto-fill grid track floor for the card grid */
+  --channel-min: 9.5rem; /* auto-fill track floor for the channel index */
+  --tap-min: 2.75rem; /* 44px — minimum interactive target, WCAG 2.5.5 */
+  --icon-size: 1.25rem;
+  --icon-size-sm: 1rem;
+  --brand-mark: 2.5rem;
+  --dot-size: 0.5rem;
+
+  /* ==== COLOUR: surfaces (near-black ladder, 4-6pt luminance steps) ======= */
+  --surface-0: #0b0f14; /* page */
+  --surface-1: #121820; /* masthead, footer, panel */
+  --surface-2: #1a212b; /* raised: cards, inputs */
+  --surface-3: #232b36; /* hover/pressed on a raised surface */
+  --surface-inset: #070a0e; /* wells, skeleton troughs */
+
+  /* ==== COLOUR: borders (hairlines do the work, not shadows) ============== */
+  --border: #262e39;
+  --border-strong: #3a4452;
+
+  /* ==== COLOUR: text (off-white, stepped down in luminance, not opacity) == */
+  --text-primary: #eef2f6; /* 17.1:1 on surface-0 — never pure white */
+  --text-secondary: #aab5c0; /*  9.2:1 on surface-0, 6.9:1 on surface-3 */
+  --text-tertiary: #8e99a6; /*  6.6:1 on surface-0, 4.9:1 on surface-3 */
+
+  /* ==== COLOUR: the one owned accent — emergency signal amber ============= */
+  --accent: #ffa63d; /* 9.9:1 on surface-0 */
+  --accent-hover: #ffb85c; /* lighter reads as "closer" on dark */
+  --accent-pressed: #e88f28;
+  --accent-fg: #1a1206; /* text/icons drawn on top of --accent, 9.5:1 */
+  --accent-quiet: rgb(255 166 61 / 0.12); /* tint fill */
+  --accent-line: rgb(255 166 61 / 0.35); /* tint hairline */
+
+  /* ==== COLOUR: hazard channels ==========================================
+   * One hue per catalogue theme (catalogue.ts `Dataset["theme"]`). Every hue
+   * is verified >= 4.5:1 against surface-0 AND surface-3, so a channel name may
+   * be *set* in its own colour, not merely swatched. Use them for identity —
+   * a stripe, a dot, a section rule — never for primary interactive
+   * attention; that belongs to --accent alone. */
+  --hazard-coastal_inundation: #3fbfb0;
+  --hazard-flood: #5aa9ff;
+  --hazard-landslide: #d98b4a;
+  --hazard-earthquake: #ff7a6b;
+  --hazard-sea_level_rise: #4fd1c5;
+  --hazard-climate: #b58cff;
+  --hazard-other: #8fa0b3;
+
+  /* ==== COLOUR: scope stripes ============================================
+   * The three publishing tiers in `Dataset["scope"]`, drawn down a card's
+   * leading edge. Deliberately reuses hues already in the palette so the
+   * total number of colours in the product does not grow. */
+  --scope-wcc: var(--accent);
+  --scope-regional: var(--hazard-coastal_inundation);
+  --scope-national: var(--hazard-other);
+
+  /* ==== COLOUR: status (kept to two — six accents = zero accents) ========= */
+  --success: #58d68d;
+  --danger: #ff8577;
+
+  /* ==== ELEVATION: hairline-first; shadows only for things that float ===== */
+  --shadow-color: 0deg 0% 0%;
+  --shadow-sm: 0 1px 2px hsl(var(--shadow-color) / 0.4);
+  --shadow-md: 0 8px 24px -4px hsl(var(--shadow-color) / 0.45);
+  --shadow-lg: 0 24px 48px -8px hsl(var(--shadow-color) / 0.55);
+
+  /* ==== FOCUS: one ring, defined once, inherited by everything ============
+   * --focus-ring is the box-shadow form, for controls that already own their
+   * outline or that sit inside a clipped container. */
+  --focus-ring-color: var(--accent);
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+  --focus-ring: 0 0 0 var(--focus-ring-offset) var(--surface-0),
+    0 0 0 calc(var(--focus-ring-offset) + var(--focus-ring-width))
+      var(--focus-ring-color);
+
+  /* ==== SKELETON: the shared async convention =============================
+   * Skeletons mirror the shape of the content they stand in for. Sibling
+   * tickets: use .skeleton / .skeleton-card from style.css rather than a
+   * spinner, a blank flash or a "Loading…" string. */
+  --skeleton-base: #1a212b;
+  --skeleton-sheen: rgb(255 255 255 / 0.07);
+
+  /* The masthead's ambient signal sweep — the one looping animation we allow. */
+  --sweep-color: rgb(255 166 61 / 0.9);
+
+  /* ==== MOTION: transform/opacity only, never layout properties ===========
+   * Durations are tokens so the reduced-motion block at the foot of this file
+   * can neutralise all of them at once; components never need their own
+   * media query. */
+  --duration-fast: 120ms; /* hover / press feedback */
+  --duration-base: 200ms; /* control state change */
+  --duration-slow: 320ms; /* element enter */
+  --duration-ambient: 7s; /* the single ambient loop (masthead sweep) */
+  --duration-shimmer: 1400ms; /* skeleton sheen cycle */
+  --stagger-step: 24ms; /* per-item delay in a staggered list */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  --transition-colors: color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+  --transition-transform: transform var(--duration-fast) var(--ease-out);
 }
 
 /* Light: applied automatically when the OS asks for it... */
@@ -139,52 +215,62 @@
   :root {
     color-scheme: light;
 
-    --surface-0: #f3f5f7;
-    --surface-1: #ffffff;
+    --surface-0: #eff1f5;
+    --surface-1: #f8f9fb;
     --surface-2: #ffffff;
     --surface-3: #eef0f3;
+    --surface-inset: #e4e7ed;
 
     --border: #dde1e7;
-    --border-strong: #c7ccd4;
+    --border-strong: #c1c8d2;
 
-    --text-primary: #12161c;
-    --text-secondary: #454e58;
-    --text-tertiary: #5c6672;
+    --text-primary: #12161c; /* 16.1:1 on surface-0 */
+    --text-secondary: #454e58; /*  7.5:1 */
+    --text-tertiary: #5c6672; /*  5.2:1 on surface-0, 5.1:1 on surface-3 */
 
-    --accent: #a3540a;
-    --accent-hover: #8a4708; /* darker = "pressed" on light surfaces */
-    --accent-fg: #fffaf5;
+    --accent: #a3540a; /* 5.0:1 on surface-0, 5.5:1 on surface-2 */
+    --accent-hover: #8a4708; /* darker reads as "pressed" on light */
+    --accent-pressed: #703805;
+    --accent-fg: #ffffff; /* 5.5:1 on --accent */
+    --accent-quiet: rgb(163 84 10 / 0.09);
+    --accent-line: rgb(163 84 10 / 0.3);
 
-    --hazard-coastal_inundation: #0284c7;
-    --hazard-flood: #2563eb;
-    --hazard-landslide: #92400e;
-    --hazard-earthquake: #e11d48;
-    --hazard-sea_level_rise: #0891b2;
-    --hazard-climate: #15803d;
-    --hazard-other: #64748b;
+    --hazard-coastal_inundation: #0f6f63;
+    --hazard-flood: #1c5fb5;
+    --hazard-landslide: #8a4d12;
+    --hazard-earthquake: #b02f24;
+    --hazard-sea_level_rise: #0d6e78;
+    --hazard-climate: #6b3fc4;
+    --hazard-other: #4f5b6b;
 
-    --success: #15803d;
-    --danger: #b91c1c;
+    --success: #1a7f4b;
+    --danger: #b02f24;
 
     --shadow-color: 220deg 20% 30%;
     --shadow-sm: 0 1px 2px hsl(var(--shadow-color) / 0.08);
     --shadow-md: 0 8px 24px -4px hsl(var(--shadow-color) / 0.12);
     --shadow-lg: 0 24px 48px -8px hsl(var(--shadow-color) / 0.16);
+
+    --skeleton-base: #e2e6ec;
+    --skeleton-sheen: rgb(255 255 255 / 0.85);
+
+    --sweep-color: rgb(163 84 10 / 0.8);
   }
 }
 
-/* ...and reasserted here so an explicit `data-theme` (a future toggle) always
- * wins, even against an OS preference that disagrees with it. */
+/* ...and reasserted here so an explicit `data-theme` (the masthead toggle)
+ * always wins, even against an OS preference that disagrees with it. */
 html[data-theme="light"] {
   color-scheme: light;
 
-  --surface-0: #f3f5f7;
-  --surface-1: #ffffff;
+  --surface-0: #eff1f5;
+  --surface-1: #f8f9fb;
   --surface-2: #ffffff;
   --surface-3: #eef0f3;
+  --surface-inset: #e4e7ed;
 
   --border: #dde1e7;
-  --border-strong: #c7ccd4;
+  --border-strong: #c1c8d2;
 
   --text-primary: #12161c;
   --text-secondary: #454e58;
@@ -192,23 +278,31 @@ html[data-theme="light"] {
 
   --accent: #a3540a;
   --accent-hover: #8a4708;
-  --accent-fg: #fffaf5;
+  --accent-pressed: #703805;
+  --accent-fg: #ffffff;
+  --accent-quiet: rgb(163 84 10 / 0.09);
+  --accent-line: rgb(163 84 10 / 0.3);
 
-  --hazard-coastal_inundation: #0284c7;
-  --hazard-flood: #2563eb;
-  --hazard-landslide: #92400e;
-  --hazard-earthquake: #e11d48;
-  --hazard-sea_level_rise: #0891b2;
-  --hazard-climate: #15803d;
-  --hazard-other: #64748b;
+  --hazard-coastal_inundation: #0f6f63;
+  --hazard-flood: #1c5fb5;
+  --hazard-landslide: #8a4d12;
+  --hazard-earthquake: #b02f24;
+  --hazard-sea_level_rise: #0d6e78;
+  --hazard-climate: #6b3fc4;
+  --hazard-other: #4f5b6b;
 
-  --success: #15803d;
-  --danger: #b91c1c;
+  --success: #1a7f4b;
+  --danger: #b02f24;
 
   --shadow-color: 220deg 20% 30%;
   --shadow-sm: 0 1px 2px hsl(var(--shadow-color) / 0.08);
   --shadow-md: 0 8px 24px -4px hsl(var(--shadow-color) / 0.12);
   --shadow-lg: 0 24px 48px -8px hsl(var(--shadow-color) / 0.16);
+
+  --skeleton-base: #e2e6ec;
+  --skeleton-sheen: rgb(255 255 255 / 0.85);
+
+  --sweep-color: rgb(163 84 10 / 0.8);
 }
 
 html[data-theme="dark"] {
@@ -218,42 +312,63 @@ html[data-theme="dark"] {
   --surface-1: #121820;
   --surface-2: #1a212b;
   --surface-3: #232b36;
+  --surface-inset: #070a0e;
 
   --border: #262e39;
   --border-strong: #3a4452;
 
   --text-primary: #eef2f6;
   --text-secondary: #aab5c0;
-  --text-tertiary: #8a95a1;
+  --text-tertiary: #8e99a6;
 
   --accent: #ffa63d;
   --accent-hover: #ffb85c;
+  --accent-pressed: #e88f28;
   --accent-fg: #1a1206;
+  --accent-quiet: rgb(255 166 61 / 0.12);
+  --accent-line: rgb(255 166 61 / 0.35);
 
-  --hazard-coastal_inundation: #38bdf8;
-  --hazard-flood: #3b82f6;
-  --hazard-landslide: #d97706;
-  --hazard-earthquake: #f43f5e;
-  --hazard-sea_level_rise: #22d3ee;
-  --hazard-climate: #4ade80;
-  --hazard-other: #94a3b8;
+  --hazard-coastal_inundation: #3fbfb0;
+  --hazard-flood: #5aa9ff;
+  --hazard-landslide: #d98b4a;
+  --hazard-earthquake: #ff7a6b;
+  --hazard-sea_level_rise: #4fd1c5;
+  --hazard-climate: #b58cff;
+  --hazard-other: #8fa0b3;
 
-  --success: #4ade80;
-  --danger: #f87171;
+  --success: #58d68d;
+  --danger: #ff8577;
 
   --shadow-color: 0deg 0% 0%;
   --shadow-sm: 0 1px 2px hsl(var(--shadow-color) / 0.4);
   --shadow-md: 0 8px 24px -4px hsl(var(--shadow-color) / 0.45);
   --shadow-lg: 0 24px 48px -8px hsl(var(--shadow-color) / 0.55);
+
+  --skeleton-base: #1a212b;
+  --skeleton-sheen: rgb(255 255 255 / 0.07);
+
+  --sweep-color: rgb(255 166 61 / 0.9);
+}
+
+/* On very wide displays the content column earns another 12rem so the card
+ * grid keeps four-plus tracks instead of stretching them. Kept here with the
+ * other token values rather than in style.css. */
+@media (min-width: 100rem) {
+  :root {
+    --content-width: 84rem;
+  }
 }
 
 /* Motion is opt-out, not opt-in: anything animating a --duration-* token
- * collapses to (near) instant for users who asked for reduced motion,
- * without every component needing its own media query. */
+ * collapses to (near) instant for users who asked for reduced motion, without
+ * every component needing its own media query. style.css additionally stops
+ * the ambient sweep and the skeleton shimmer outright — a 0.01ms loop would
+ * strobe rather than settle. */
 @media (prefers-reduced-motion: reduce) {
   :root {
     --duration-fast: 0.01ms;
     --duration-base: 0.01ms;
     --duration-slow: 0.01ms;
+    --stagger-step: 0ms;
   }
 }
