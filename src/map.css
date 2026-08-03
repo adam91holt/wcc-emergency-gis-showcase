@@ -1,0 +1,904 @@
+/* Situation map — the overlay surface for src/map.ts.
+ *
+ * Concept: the discovery console in src/filters.css is the panel above the
+ * dispatcher's desk; this is the wall it faces. The overlays are drawn as a
+ * *channel rack*: one dense hairline-ruled row per dataset, each with a
+ * coloured bus bar, an LED that reports what that specific feed is doing
+ * (idle / acquiring / live / blocked), and a tabular-mono readout of how many
+ * features it put on the map. The map is the instrument the rack drives, with
+ * a live coordinate HUD along its bottom edge.
+ *
+ * Dark-first: the ladder below is authored for dark and ported to light at
+ * the end of the token block. Chrome uses exactly one accent (--accent from
+ * style.css). The hazard colours are a *data* palette, not six accents —
+ * they encode which hazard a geometry belongs to, and the swatch in the rack
+ * and the stroke on the map read the same token. */
+
+/* Leaflet's own stylesheet is NOT imported here: it rides the lazy chunk with
+ * the engine (see loadRuntime() in src/map.ts) so it stays out of the initial
+ * CSS payload. The `.hzmap .leaflet-*` rules at the bottom of this file are
+ * one specificity step above Leaflet's own, so load order doesn't matter. */
+
+:root {
+  /* Surface ladder: page (--bg) → panel → raised → raised-2, 4–6px luminance
+   * steps, never pure black, never flat grey. */
+  --map-panel: #101a2c;
+  --map-raised: #16233a;
+  --map-raised-2: #1d2c47;
+  --map-line: #23324c;
+  --map-line-2: #2f4364;
+
+  /* Off-white ink, stepped down in luminance rather than opacity. */
+  --map-ink: #e7edf8;
+  --map-ink-2: #a4b5d0;
+  --map-ink-3: #6f819f;
+
+  --map-signal: var(--accent);
+  --map-on-signal: #061523;
+  --map-warn: #f2555a;
+  --map-veil: rgba(231, 237, 248, 0.07);
+  --map-shadow: 0 18px 40px rgba(2, 8, 20, 0.5);
+
+  /* Hazard data palette — one token per theme, owned here and read by
+   * src/map.ts through getComputedStyle, so no component ever holds a hex. */
+  --map-hz-coastal-inundation: #3ea8f5;
+  --map-hz-sea-level-rise: #22b8cf;
+  --map-hz-flood: #7c8cf8;
+  --map-hz-earthquake: #ffb224;
+  --map-hz-landslide: #e8734a;
+  --map-hz-climate: #5ec8a8;
+  --map-hz-other: #8ea3c0;
+  --map-hz-uncategorised: #8ea3c0;
+  --map-hz-default: #8ea3c0;
+
+  /* Paired type: sans for chrome, mono for every number, coordinate and id. */
+  --map-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --map-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+
+  /* Type scale — 6 sizes, 3 weights (400/600/700), held across the surface. */
+  --map-fs-label: 10.5px;
+  --map-fs-micro: 11px;
+  --map-fs-chan: 12.5px;
+  --map-fs-body: 13.5px;
+  --map-fs-lead: 16px;
+  --map-fs-readout: 30px;
+
+  --map-fast: 120ms;
+  --map-mid: 220ms;
+  --map-ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --map-panel: #ffffff;
+    --map-raised: #f1f5fa;
+    --map-raised-2: #e6edf6;
+    --map-line: #dde5ef;
+    --map-line-2: #c2cfe0;
+    --map-ink: #0f172a;
+    --map-ink-2: #48586f;
+    --map-ink-3: #74839a;
+    --map-on-signal: #f7fbff;
+    --map-warn: #c62a34;
+    --map-veil: rgba(15, 23, 42, 0.05);
+    --map-shadow: 0 18px 40px rgba(15, 23, 42, 0.14);
+
+    --map-hz-coastal-inundation: #0d7ec9;
+    --map-hz-sea-level-rise: #0e8ea3;
+    --map-hz-flood: #4a5ad6;
+    --map-hz-earthquake: #b96e00;
+    --map-hz-landslide: #c0451c;
+    --map-hz-climate: #16866a;
+    --map-hz-other: #5b6c86;
+    --map-hz-uncategorised: #5b6c86;
+    --map-hz-default: #5b6c86;
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Panel shell                                                             */
+/* ---------------------------------------------------------------------- */
+
+/* Icon geometry and the visually-hidden live region are declared here rather
+ * than borrowed from filters.css, so this component carries its own styling
+ * and neither module depends on the other's global utility classes. */
+.hzmap .ico,
+.hz-pop .ico {
+  flex: none;
+  display: block;
+}
+
+.hzmap__live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.hzmap {
+  position: relative;
+  margin: 20px 0 24px;
+  background: var(--map-panel);
+  border: 1px solid var(--map-line);
+  border-radius: 14px;
+  overflow: hidden;
+  font-family: var(--map-sans);
+  color: var(--map-ink);
+}
+
+.hzmap__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--map-line);
+}
+
+.hzmap__label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 2px;
+  font-size: var(--map-fs-label);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--map-ink-3);
+}
+
+.hzmap__title {
+  margin: 0;
+  font-size: var(--map-fs-lead);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.hzmap__readout {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-family: var(--map-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--map-ink-2);
+}
+
+.hzmap__count {
+  font-size: var(--map-fs-readout);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--map-signal);
+}
+
+.hzmap__count.is-tick {
+  animation: map-tick var(--map-mid) var(--map-ease);
+}
+
+.hzmap__total {
+  font-size: var(--map-fs-body);
+  color: var(--map-ink-3);
+}
+
+.hzmap__unit {
+  margin-left: 6px;
+  font-family: var(--map-sans);
+  font-size: var(--map-fs-label);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--map-ink-3);
+}
+
+.hzmap__body {
+  display: grid;
+  grid-template-columns: 268px minmax(0, 1fr);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Channel rack — dense on purpose: this is a scan-and-compare surface      */
+/* ---------------------------------------------------------------------- */
+
+.hzmap__rack {
+  border-right: 1px solid var(--map-line);
+  max-height: 520px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: linear-gradient(180deg, var(--map-panel), var(--map-raised));
+  scrollbar-width: thin;
+  scrollbar-color: var(--map-line-2) transparent;
+}
+
+.rack-group + .rack-group {
+  border-top: 1px solid var(--map-line);
+}
+
+.rack-group__label {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 12px 6px;
+  background: var(--map-panel);
+  border-bottom: 1px solid var(--map-line);
+  font-size: var(--map-fs-label);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--map-ink-3);
+}
+
+.rack-group__n {
+  font-family: var(--map-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--map-ink-3);
+}
+
+.chan {
+  position: relative;
+  border-bottom: 1px solid var(--map-line);
+  animation: map-rise 260ms var(--map-ease) both;
+  animation-delay: calc(var(--i, 0) * 14ms);
+}
+
+.chan:last-child {
+  border-bottom: 0;
+}
+
+/* The bus bar: the channel's hazard colour, dim until the feed is live. */
+.chan__bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--chan-color);
+  opacity: 0.18;
+  transform: scaleY(0.35);
+  transform-origin: center;
+  transition:
+    transform var(--map-mid) var(--map-ease),
+    opacity var(--map-mid) var(--map-ease);
+}
+
+.chan[data-status="live"] .chan__bar {
+  opacity: 1;
+  transform: scaleY(1);
+}
+
+.chan[data-status="loading"] .chan__bar {
+  opacity: 0.6;
+  transform: scaleY(1);
+}
+
+.chan[data-status="blocked"] .chan__bar {
+  background: var(--map-warn);
+  opacity: 0.9;
+  transform: scaleY(1);
+}
+
+.chan__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 12px 7px 14px;
+  background: none;
+  border: 0;
+  color: var(--map-ink-2);
+  font: inherit;
+  font-size: var(--map-fs-chan);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--map-fast) linear,
+    color var(--map-fast) linear,
+    transform var(--map-fast) var(--map-ease);
+}
+
+.chan__toggle:hover {
+  background: var(--map-veil);
+  color: var(--map-ink);
+}
+
+.chan__toggle:focus-visible {
+  outline: 2px solid var(--map-signal);
+  outline-offset: -2px;
+}
+
+.chan__toggle:active {
+  transform: scale(0.99);
+}
+
+.chan[data-status="live"] .chan__toggle,
+.chan[data-status="loading"] .chan__toggle {
+  color: var(--map-ink);
+  font-weight: 600;
+}
+
+/* The LED: the single glance-level answer to "what is this feed doing". */
+.chan__led {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1.5px solid var(--map-line-2);
+  transition:
+    background-color var(--map-fast) linear,
+    border-color var(--map-fast) linear,
+    box-shadow var(--map-fast) linear;
+}
+
+.chan[data-status="live"] .chan__led {
+  background: var(--chan-color);
+  border-color: var(--chan-color);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--chan-color) 22%, transparent);
+}
+
+.chan[data-status="loading"] .chan__led {
+  border-color: var(--chan-color);
+  animation: map-pulse 1s var(--map-ease) infinite;
+}
+
+.chan[data-status="blocked"] .chan__led {
+  background: var(--map-warn);
+  border-color: var(--map-warn);
+}
+
+.chan__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chan__readout {
+  flex: none;
+  font-family: var(--map-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--map-fs-micro);
+  color: var(--map-ink-3);
+  transition: color var(--map-fast) linear;
+}
+
+.chan[data-status="live"] .chan__readout {
+  color: var(--chan-color);
+}
+
+.chan[data-status="blocked"] .chan__readout {
+  color: var(--map-warn);
+}
+
+/* The selected dataset's channel, driven by the router's `dataset` key. */
+.chan.is-selected {
+  background: var(--map-raised-2);
+}
+
+.chan.is-selected .chan__name {
+  color: var(--map-ink);
+}
+
+/* The degradation state: inline, per channel, and never a dead end — the
+ * reader always gets a way to the data at its own source. */
+.chan__note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  padding: 0 12px 8px 14px;
+  font-size: var(--map-fs-micro);
+  line-height: 1.45;
+  color: var(--map-ink-3);
+  animation: map-rise 200ms var(--map-ease) both;
+}
+
+.chan__note .ico {
+  margin-top: 1px;
+  color: var(--map-warn);
+}
+
+.chan__note a {
+  color: var(--map-signal);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--map-signal) 40%, transparent);
+}
+
+.chan__note a:hover {
+  border-bottom-color: var(--map-signal);
+}
+
+.rack-excluded {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 12px 12px 14px;
+  border-top: 1px solid var(--map-line);
+  font-size: var(--map-fs-micro);
+  line-height: 1.45;
+  color: var(--map-ink-3);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Stage                                                                   */
+/* ---------------------------------------------------------------------- */
+
+.hzmap__stage {
+  position: relative;
+  min-height: 480px;
+  background: var(--map-raised);
+}
+
+.hzmap__canvas {
+  position: absolute;
+  inset: 0;
+  background: var(--map-raised);
+}
+
+.hzmap__skeleton {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.hzmap__skeleton[hidden] {
+  display: none;
+}
+
+/* HUD strip: the map's own instrument readout. Mono, tabular, always on.
+ * Top-left because Leaflet owns the other three corners — zoom top-right,
+ * scale bottom-left, attribution bottom-right. */
+.hzmap__hud {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 9px;
+  background: color-mix(in srgb, var(--map-panel) 88%, transparent);
+  border: 1px solid var(--map-line);
+  border-radius: 8px;
+  backdrop-filter: blur(6px);
+  font-family: var(--map-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--map-fs-micro);
+  color: var(--map-ink-2);
+  pointer-events: none;
+}
+
+.hzmap__status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--map-ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.hzmap__status::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--map-ink-3);
+  transition: background-color var(--map-fast) linear;
+}
+
+.hzmap[data-ready="true"] .hzmap__status::before {
+  background: var(--map-signal);
+}
+
+.hzmap[data-ready="failed"] .hzmap__status::before,
+.hzmap[data-basemap="failed"] .hzmap__status::before {
+  background: var(--map-warn);
+}
+
+.hzmap__fallback {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 24px;
+  max-width: 46ch;
+  font-size: var(--map-fs-body);
+  line-height: 1.5;
+  color: var(--map-ink-2);
+}
+
+.hzmap__fallback .ico {
+  margin-top: 3px;
+  color: var(--map-warn);
+}
+
+.hzmap__foot {
+  padding: 9px 16px 11px;
+  border-top: 1px solid var(--map-line);
+  font-size: var(--map-fs-micro);
+  line-height: 1.5;
+  color: var(--map-ink-3);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Skeleton — the finished map's geometry, not a spinner                    */
+/* ---------------------------------------------------------------------- */
+
+.hzskel {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--map-raised);
+}
+
+.hzskel__grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, var(--map-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--map-line) 1px, transparent 1px);
+  background-size: 64px 64px;
+  opacity: 0.55;
+}
+
+.hzskel__shape {
+  position: relative;
+  overflow: hidden;
+  display: block;
+  background: var(--map-raised-2);
+  border-radius: 8px;
+}
+
+.hzskel__shape::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, var(--map-veil), transparent);
+  transform: translateX(-100%);
+  animation: map-sweep 1.15s var(--map-ease) infinite;
+}
+
+/* Each shape sits where the real control it stands in for will land. */
+.hzskel__hud {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  width: 196px;
+  height: 26px;
+}
+
+.hzskel__zoom {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  width: 30px;
+  height: 60px;
+  border-radius: 6px;
+}
+
+.hzskel__scale {
+  position: absolute;
+  left: 10px;
+  bottom: 12px;
+  width: 84px;
+  height: 12px;
+  border-radius: 4px;
+}
+
+.hzskel__blob {
+  position: absolute;
+  border-radius: 46% 54% 38% 62% / 52% 42% 58% 48%;
+  opacity: 0.7;
+}
+
+.hzskel__blob--a {
+  left: 22%;
+  top: 26%;
+  width: 190px;
+  height: 150px;
+}
+
+.hzskel__blob--b {
+  left: 46%;
+  top: 52%;
+  width: 130px;
+  height: 108px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Leaflet chrome, ported onto the token set                               */
+/* ---------------------------------------------------------------------- */
+
+.hzmap .leaflet-container {
+  background: var(--map-raised);
+  font-family: var(--map-sans);
+  font-size: var(--map-fs-micro);
+}
+
+.hzmap .leaflet-bar,
+.hzmap .leaflet-control-scale-line,
+.hzmap .leaflet-control-attribution {
+  background: color-mix(in srgb, var(--map-panel) 90%, transparent);
+  color: var(--map-ink-2);
+  border: 1px solid var(--map-line);
+  box-shadow: none;
+}
+
+.hzmap .leaflet-control-attribution {
+  padding: 2px 7px;
+  border-radius: 8px 0 0 0;
+  font-size: 10px;
+}
+
+.hzmap .leaflet-control-attribution a {
+  color: var(--map-ink-2);
+}
+
+.hzmap .leaflet-control-scale-line {
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-family: var(--map-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.hzmap .leaflet-bar a {
+  background: transparent;
+  color: var(--map-ink-2);
+  border-bottom-color: var(--map-line);
+  transition:
+    background-color var(--map-fast) linear,
+    color var(--map-fast) linear;
+}
+
+.hzmap .leaflet-bar a:hover {
+  background: var(--map-veil);
+  color: var(--map-ink);
+}
+
+.hzmap .leaflet-bar a:focus-visible {
+  outline: 2px solid var(--map-signal);
+  outline-offset: -2px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Feature popup                                                           */
+/* ---------------------------------------------------------------------- */
+
+.hz-popup .leaflet-popup-content-wrapper {
+  padding: 0;
+  background: var(--map-panel);
+  color: var(--map-ink);
+  border: 1px solid var(--map-line-2);
+  border-radius: 12px;
+  box-shadow: var(--map-shadow);
+}
+
+.hz-popup .leaflet-popup-content {
+  margin: 0;
+  width: auto !important;
+  line-height: 1.5;
+}
+
+.hz-popup .leaflet-popup-tip {
+  background: var(--map-panel);
+  border: 1px solid var(--map-line-2);
+  box-shadow: none;
+}
+
+.hz-popup a.leaflet-popup-close-button {
+  color: var(--map-ink-3);
+  padding: 6px 7px 0 0;
+}
+
+.hz-popup a.leaflet-popup-close-button:hover {
+  color: var(--map-ink);
+  background: transparent;
+}
+
+.hz-pop {
+  padding: 12px 14px 12px;
+  font-family: var(--map-sans);
+}
+
+.hz-pop__label {
+  margin: 0 0 2px;
+  font-size: var(--map-fs-label);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--map-ink-3);
+}
+
+.hz-pop__title {
+  margin: 0 0 8px;
+  font-size: var(--map-fs-body);
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--map-ink);
+}
+
+.hz-pop__fields {
+  margin: 0 0 10px;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--map-line);
+}
+
+.hz-pop__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+.hz-pop__row dt {
+  flex: none;
+  font-size: var(--map-fs-micro);
+  color: var(--map-ink-3);
+}
+
+.hz-pop__row dd {
+  margin: 0;
+  font-family: var(--map-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--map-fs-micro);
+  font-weight: 600;
+  color: var(--map-ink);
+  text-align: right;
+  word-break: break-word;
+}
+
+.hz-pop__empty {
+  margin: 0 0 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--map-line);
+  font-size: var(--map-fs-micro);
+  color: var(--map-ink-3);
+}
+
+.hz-pop__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hz-pop__open {
+  padding: 5px 10px;
+  background: var(--map-signal);
+  color: var(--map-on-signal);
+  border: 0;
+  border-radius: 7px;
+  font: inherit;
+  font-size: var(--map-fs-micro);
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    opacity var(--map-fast) linear,
+    transform var(--map-fast) var(--map-ease);
+}
+
+.hz-pop__open:hover {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+.hz-pop__open:active {
+  transform: scale(0.97);
+}
+
+.hz-pop__link {
+  font-size: var(--map-fs-micro);
+  font-weight: 600;
+  color: var(--map-signal);
+  text-decoration: none;
+}
+
+.hz-pop__link:hover {
+  text-decoration: underline;
+}
+
+/* Attribution credit for each live overlay, so the map always says whose
+ * data it is drawing. */
+.hz-credit {
+  color: var(--map-ink-3);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Motion                                                                  */
+/* ---------------------------------------------------------------------- */
+
+@keyframes map-rise {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes map-tick {
+  from {
+    opacity: 0.4;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes map-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.75);
+  }
+}
+
+@keyframes map-sweep {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Narrow screens: the rack moves above the map and shortens               */
+/* ---------------------------------------------------------------------- */
+
+@media (max-width: 860px) {
+  .hzmap__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .hzmap__rack {
+    border-right: 0;
+    border-bottom: 1px solid var(--map-line);
+    max-height: 268px;
+  }
+
+  .hzmap__stage {
+    min-height: 380px;
+  }
+
+  .hzmap__readout {
+    order: 3;
+  }
+
+  .hzmap__count {
+    font-size: 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chan,
+  .chan__bar,
+  .chan__toggle,
+  .chan__led,
+  .chan__readout,
+  .chan__note,
+  .hzmap__count,
+  .hzmap__status::before,
+  .hz-pop__open,
+  .hzskel__shape::after,
+  .hzmap .leaflet-bar a {
+    transition-duration: 1ms;
+    animation: none;
+  }
+}

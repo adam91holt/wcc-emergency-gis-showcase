@@ -16,6 +16,9 @@ import renderFilters, {
   onSelectionChange,
   selectDataset,
 } from "./filters";
+// The map module's own Leaflet/esri-leaflet payload is behind a dynamic
+// import inside renderMap, so this static import only costs the shell.
+import renderMap from "./map";
 
 /** The four stable mount points declared in index.html, one per feature ticket. */
 export type MountId = "filters" | "map" | "detail" | "charts";
@@ -146,6 +149,7 @@ function boot(): void {
   document.querySelector<HTMLElement>("#total")!.textContent = String(catalogue.counts.total);
   wireCardList(app);
   registerMount("filters", renderFilters);
+  registerMount("map", renderMap);
   renderCatalogue(getState());
   onSelectionChange(highlightSelection);
   subscribe((state) => {
