@@ -9,7 +9,13 @@
 // from here.
 import { byTheme, label, catalogue, type Dataset } from "./catalogue";
 import { getState, subscribe, type RouteState } from "./router";
-import renderFilters, { applyFilters, filterStateFromRoute, clearAll, selectDataset } from "./filters";
+import renderFilters, {
+  applyFilters,
+  filterStateFromRoute,
+  getSelectedId,
+  onSelectionChange,
+  selectDataset,
+} from "./filters";
 
 /** The four stable mount points declared in index.html, one per feature ticket. */
 export type MountId = "filters" | "map" | "detail" | "charts";
@@ -59,17 +65,25 @@ function renderAllMounts(state: RouteState): void {
   for (const id of registry.keys()) renderMount(id, state);
 }
 
-function card(d: Dataset, selectedId: string | undefined): string {
+/** `--i` staggers the card's mount animation (see filters.css); capped so a
+ * 67-card render doesn't end in a one-second cascade. */
+function card(d: Dataset, index: number): string {
   const link = d.url ? `<a href="${d.url}" target="_blank" rel="noreferrer">source ↗</a>` : "";
-  const selected = d.id === selectedId;
-  return `<article class="ds${selected ? " is-selected" : ""}" data-scope="${d.scope}" data-id="${d.id}">
-    <button type="button" class="ds-select" aria-pressed="${selected}">
-      <h3>${label(d)}</h3>
-    </button>
+  // The button lives *inside* the heading (not the other way round) so the
+  // card stays a real h3 for screen-reader heading navigation while being
+  // operable from the keyboard.
+  return `<article class="ds" data-scope="${d.scope}" data-id="${d.id}" style="--i:${Math.min(index, 14)}">
+    <h3><button type="button" class="ds-select" aria-pressed="false">${label(d)}</button></h3>
     <p class="meta">${d.scope} · ${d.authority ?? "—"}${d.year ? ` · ${d.year}` : ""}</p>
     ${link}
   </article>`;
 }
+
+/** The theme × scope × query slice the card list is currently showing. A
+ * selection-only route change (dataset=…) must not rebuild the list — that
+ * would restart every card's mount animation and throw away the DOM the
+ * highlight is about to touch. */
+let renderedSlice: string | null = null;
 
 /** Renders the catalogue card list for the current route state — filtered
  * through filters.ts's theme × scope × query predicate, so this list and the
@@ -77,35 +91,52 @@ function card(d: Dataset, selectedId: string | undefined): string {
 function renderCatalogue(state: RouteState): void {
   const app = document.querySelector<HTMLDivElement>("#app");
   if (!app) return;
-  const list = applyFilters(filterStateFromRoute(state));
-  if (list.length === 0) {
-    app.innerHTML = `<div class="empty-state">
-      <p>No datasets match the current filters.</p>
-      <button type="button" class="btn-reset" data-action="reset-filters">Clear filters</button>
-    </div>`;
-    return;
-  }
-  const grouped = byTheme(list);
-  const sections = [...grouped.entries()]
+  const filters = filterStateFromRoute(state);
+  const slice = `${filters.theme ?? ""} ${filters.scope ?? ""} ${filters.query ?? ""}`;
+  if (slice === renderedSlice) return;
+  renderedSlice = slice;
+
+  // No empty markup here on purpose: when nothing matches, the filter console
+  // directly above shows the explanation and the one-click reset, next to the
+  // controls that caused it. Two empty states would say the same thing twice.
+  let index = 0;
+  app.innerHTML = [...byTheme(applyFilters(filters)).entries()]
     .map(([theme, ds]) => `<section><h2>${theme} <span class="count">${ds.length}</span></h2>
-      <div class="grid">${ds.map((d) => card(d, state.dataset)).join("")}</div></section>`)
+      <div class="grid">${ds.map((d) => card(d, index++)).join("")}</div></section>`)
     .join("");
-  app.innerHTML = sections;
+  highlightSelection(getSelectedId());
 }
 
-/** Wires the card list's two interactive bits — selecting a dataset and the
- * empty-state's one-click reset — through a single delegated listener, since
- * #app's innerHTML is fully replaced on every render. */
+function prefersReducedMotion(): boolean {
+  return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/** Paint the selected dataset into the card list. Driven by filters.ts's
+ * selection API, so a selection made anywhere — a card click, Enter in the
+ * search combobox, a pasted deep link, Back/Forward — lands here the same way
+ * (and the map/detail tickets subscribe to exactly the same callback). */
+function highlightSelection(id: string | undefined): void {
+  const app = document.querySelector<HTMLDivElement>("#app");
+  if (!app) return;
+  for (const node of app.querySelectorAll<HTMLElement>(".ds")) {
+    const selected = node.dataset.id === id;
+    node.classList.toggle("is-selected", selected);
+    node.querySelector(".ds-select")?.setAttribute("aria-pressed", String(selected));
+    if (selected) {
+      node.scrollIntoView({ block: "nearest", behavior: prefersReducedMotion() ? "auto" : "smooth" });
+    }
+  }
+}
+
+/** One delegated listener for the whole card list, since #app's innerHTML is
+ * replaced wholesale whenever the filters change. Clicking the already
+ * selected card clears the selection, so the card is a real toggle. */
 function wireCardList(app: HTMLDivElement): void {
   app.addEventListener("click", (event) => {
-    const target = event.target as HTMLElement;
-    if (target.closest('[data-action="reset-filters"]')) {
-      clearAll();
-      return;
-    }
-    const select = target.closest<HTMLElement>(".ds-select");
+    const select = (event.target as HTMLElement).closest<HTMLElement>(".ds-select");
     const id = select?.closest<HTMLElement>(".ds")?.dataset.id;
-    if (id) selectDataset(id);
+    if (!id) return;
+    selectDataset(id === getSelectedId() ? undefined : id);
   });
 }
 
@@ -116,6 +147,7 @@ function boot(): void {
   wireCardList(app);
   registerMount("filters", renderFilters);
   renderCatalogue(getState());
+  onSelectionChange(highlightSelection);
   subscribe((state) => {
     renderAllMounts(state);
     renderCatalogue(state);

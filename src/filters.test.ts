@@ -5,12 +5,14 @@ import {
   themeFacetCounts,
   scopeFacetCounts,
   hasActiveFilters,
+  describeFilters,
+  announcement,
   filterStateFromRoute,
   patchForFilters,
   type FilterState,
 } from "./filters";
 import { datasets, themes, scopes, findById } from "./catalogue";
-import { parseHash, toHash } from "./router";
+import { parseHash, toHash, mergeHash } from "./router";
 
 describe("applyFilters", () => {
   it("returns everything when no filter is active", () => {
@@ -153,11 +155,64 @@ describe("URL round-tripping through the router", () => {
     }
   });
 
+  it("restores the exact same result set from a pasted deep link", () => {
+    // What a shared URL has to survive: serialise the live filters into a
+    // hash, hand that hash to a cold start, and get back the identical list.
+    const filters: FilterState = { theme: "coastal_inundation", scope: "wcc", query: "inundation" };
+    const shared = toHash({ ...patchForFilters(filters), dataset: "coastal-inundation-high" });
+
+    const restoredRoute = parseHash(shared);
+    const restored = applyFilters(filterStateFromRoute(restoredRoute));
+
+    expect(restored.length).toBeGreaterThan(0);
+    expect(restored.map((d) => d.id)).toEqual(applyFilters(filters).map((d) => d.id));
+    expect(restoredRoute.dataset).toBe("coastal-inundation-high");
+  });
+
+  it("keeps the selected dataset when only a filter key changes", () => {
+    // Selecting a dataset and then narrowing a facet must not drop either
+    // half of the state out of the URL.
+    const hash = toHash({ ...patchForFilters({ query: "fault" }), dataset: "active-faults" });
+    const narrowed = parseHash(mergeHash(hash, { scope: "regional" }));
+    expect(narrowed.dataset).toBe("active-faults");
+    expect(filterStateFromRoute(narrowed)).toEqual({ query: "fault", scope: "regional" });
+  });
+
   it("patchForFilters clears a field via explicit undefined rather than omitting it", () => {
     // mergeHash only removes keys explicitly set to undefined in the patch —
     // an omitted key is left untouched. patchForFilters must always name all
     // three keys so applying it fully replaces the prior filter state.
     const patch = patchForFilters({ theme: "flood" });
     expect(patch).toEqual({ theme: "flood", scope: undefined, query: undefined });
+  });
+});
+
+describe("describeFilters / announcement", () => {
+  it("describes the unfiltered catalogue", () => {
+    expect(describeFilters({})).toBe("the whole catalogue");
+  });
+
+  it("names the theme by its human label, not its slug", () => {
+    expect(describeFilters({ theme: "climate" })).toBe("theme “Climate Data”");
+  });
+
+  it("joins theme, scope and query into one sentence fragment", () => {
+    const text = describeFilters({ theme: "flood", scope: "wcc", query: "stream" });
+    const floodLabel = themes().find((t) => t.theme === "flood")!.theme_label;
+    expect(text).toContain(`theme “${floodLabel}”`);
+    expect(text).toContain("WCC scope");
+    expect(text).toContain("search “stream”");
+    expect(text).toContain(" and ");
+  });
+
+  it("announces the live result count, agreeing in number", () => {
+    expect(announcement({ theme: "climate" }, 21)).toBe("21 datasets match theme “Climate Data”.");
+    expect(announcement({ query: "x" }, 1)).toBe("1 dataset matches search “x”.");
+  });
+
+  it("announces an empty result set rather than going silent", () => {
+    const filters: FilterState = { theme: "climate", scope: "wcc", query: "zzz-nonexistent-zzz" };
+    expect(resultCount(filters)).toBe(0);
+    expect(announcement(filters, resultCount(filters))).toMatch(/^0 datasets match /);
   });
 });
