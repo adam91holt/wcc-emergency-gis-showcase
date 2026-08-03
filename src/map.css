@@ -657,8 +657,16 @@
 .hazins {
   padding: 11px 12px 12px;
   /* Animate the inner shell, never the popup root: Leaflet owns the root's
-   * transform for positioning and zoom animation. */
-  animation: haz-rise var(--haz-mid) var(--haz-ease) both;
+   * transform for positioning and zoom animation.
+   *
+   * `backwards`, not `both` — the same rule the result cards in filters.css
+   * follow. A forwards fill would leave `transform: translateY(0)` standing on
+   * this element for as long as the popup is open, which keeps the whole
+   * readout on its own composited layer at whatever fractional offset Leaflet
+   * has positioned the popup at (mono digits and 10.5px section labels are
+   * exactly the type that goes soft when that happens), and would win against
+   * any state style that wants to move it later. */
+  animation: haz-rise var(--haz-mid) var(--haz-ease) backwards;
 }
 
 .hazins__head {
@@ -1046,8 +1054,9 @@
     animation: none;
   }
 
-  /* haz-rise runs with fill-mode `both`, so cancelling it must also restore
-   * the state its first frame would otherwise leave the popup in. */
+  /* Belt and braces: haz-rise is already `backwards` (so `animation: none`
+   * above leaves no fill behind), but the popup must be legible from its first
+   * frame even if that entrance ever gains a fill again. */
   .hazins {
     opacity: 1;
     transform: none;
