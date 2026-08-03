@@ -140,12 +140,13 @@ inventing an eighth hue — the masthead's "Channels" figure (derived from
 and `--hazard-other` is what keeps an unthemed row visually consistent with
 them instead of falling through to an undefined custom property.
 
-**No hazard-channel legend ships in this shell.** These hues have no visible
-instance on the page yet — this seed's cards carry only a `data-scope` edge
-stripe, not a per-theme colour — so a decode-this-colour-system key here would
-teach a code with nothing to point at. Land the legend next to the first
-surface that actually paints with `--hazard-*` (the map's layer list or the
-filter chips), not in the shared shell.
+**Where the channel hues already paint.** Two places in the shell, so the
+colour code is taught and used rather than merely declared: the dot on every
+card's meta line (`.ds__channel`, coloured from the inline `--channel-color`
+`main.ts` writes), and the briefing's channel read-out (`.channel-index`),
+whose counts and bar lengths come from `themes()` at runtime. When your feature
+paints with `--hazard-*` — a map layer list, a filter chip, a chart series —
+reuse the same hue for the same theme and it will already agree with the shell.
 
 `--hazard-coastal_inundation`, `--hazard-flood`, `--hazard-landslide`,
 `--hazard-earthquake`, `--hazard-sea_level_rise`, `--hazard-climate`,
@@ -172,15 +173,20 @@ Three families, a real hierarchy, and a strict rule about which does what.
 
 | Token | Family | Carries |
 | --- | --- | --- |
-| `--font-display` | Space Grotesk | Headings, chrome, eyebrows, buttons, card titles |
-| `--font-sans` | Inter | Prose and body copy |
-| `--font-mono` | IBM Plex Mono | Every figure, id, service path and code token |
+| `--font-display` | `ui-rounded` → Segoe UI Variable Display → `system-ui` | Headings, chrome, eyebrows, buttons, card titles |
+| `--font-sans` | `ui-sans-serif` → `system-ui` → Segoe UI / Roboto / Helvetica | Prose and body copy |
+| `--font-mono` | IBM Plex Mono → `ui-monospace` → SF Mono / Cascadia / Menlo | Every figure, id, service path and code token |
 
-Self-hosted per house style — there is no font `<link>` in `index.html` and no
-third-party font CDN in the request path. Until the named weights are vendored
-into `public/fonts/` with matching `@font-face` rules, each stack resolves to
-its first installed system face, which is the deliberate current state, not a
-fallback-on-failure.
+Nothing is fetched: there is no font `<link>` in `index.html`, no `public/fonts/`
+bundle, and no third-party font CDN in the request path — so the display stack
+is built from families that are genuinely installed and genuinely *diverge*
+from the sans stack's resolution on the same machine (SF Pro Rounded vs SF Pro
+Text on Apple; the Variable Display cut vs plain Segoe UI on Windows 11). Where
+neither exists both converge on `system-ui`, and weight, size and tracking
+carry the hierarchy on their own. Do not lead either stack with a family name
+that has nothing behind it — if real faces are vendored later, add `@font-face`
+rules with `font-display: swap` in `theme.css`, preload the two above-the-fold
+weights, then put the vendored names at the head of the stack.
 
 ### Scale
 
@@ -203,7 +209,10 @@ titles), `--leading-normal` (prose). Tracking: `--tracking-tight` on display
 headings, `--tracking-eyebrow` (0.09em) on every uppercase micro-label.
 
 Add `.num` to any element containing a figure to get the mono face plus
-`tabular-nums`.
+`tabular-nums`. Use `.figure` instead when the number is written in by script:
+it adds the same mono treatment *and* the shared empty-state skeleton (see
+[Loading](#loading)), so a count is never a blank, a dash or a `0` before its
+data arrives.
 
 ---
 
@@ -235,11 +244,12 @@ rules, the masthead sweep track), `--edge-width` 3px (the scope stripe).
 | `--lede-width` | 54ch | Short, large statements |
 | `--search-width` | 34rem | The search field's cap |
 | `--card-min` | 15rem | `auto-fill` track floor for the card grid |
-| `--channel-min` | 9.5rem | `auto-fill` track floor for the channel index |
+| `--channel-min` | 10.5rem | `auto-fill` track floor for the channel read-out |
 | `--tap-min` | 2.75rem (44px) | Minimum interactive target (WCAG 2.5.5) |
 | `--icon-size` / `--icon-size-sm` | 20 / 16px | Icon box |
 | `--brand-mark` | 40px | The masthead mark |
-| `--dot-size` | 8px | Badge dots |
+| `--dot-size` | 8px | Badge dots, the card's channel dot |
+| `--bar-height` | 4px | The channel read-out's data bar |
 
 `--content-width` widens to 84rem past a 100rem viewport (set in `theme.css`).
 The shell is verified from 360px to ultrawide with no horizontal scroll.
@@ -287,6 +297,10 @@ element and do **not** set `outline: none` without substituting `--focus-ring`.
 | `--duration-ambient` | 7s | The masthead sweep — the only ambient loop |
 | `--stagger-step` | 24ms | Per-item delay in a staggered list |
 
+Distances are tokens too, so every surface travels the same amount:
+`--lift-1` (2px) is the hover lift on a raised element, `--lift-2` (8px) is the
+distance an entering element rises through.
+
 Easings: `--ease-standard`, `--ease-out`, `--ease-spring` (for things that
 should feel like they have mass). Composites `--transition-colors` and
 `--transition-transform` cover most needs.
@@ -313,7 +327,8 @@ you do not need your own media query.
 | `.icon` / `.icon--sm` | Icon box, sized from tokens |
 | `.visually-hidden` | Screen-reader-only text |
 | `.num` | Mono + tabular figures |
-| `.skeleton`, `.skeleton--text`, `.skeleton--title`, `.skeleton-card` | The loading convention |
+| `.figure` | Mono + tabular figures **and** the empty-state skeleton, for script-written numbers |
+| `.skeleton`, `.skeleton--text`, `.skeleton--title`, `.skeleton--heading`, `.skeleton--pill`, `.skeleton--dot`, `.skeleton--link`, `.skeleton-card` | The loading convention |
 
 ### Icons
 
@@ -331,12 +346,17 @@ not jump when content lands — never a bare spinner, a blank flash, or a
 panel; `.skeleton-card` already matches a `.ds` card exactly. The sheen is a
 `translateX` on a pseudo-element, so it stays on the compositor.
 
-Live examples ship in the shell: the `#total`, `#channels-total` and
-`#tiers-total` ledger figures each render a figure-shaped placeholder until
-their writer (`main.ts` for `#total`; the small boot module in `index.html`,
-reading `src/catalogue.ts`, for the other two) fills them in, and `#app` holds
-a four-card skeleton grid that `main.ts` replaces wholesale on its first
-render.
+For numbers, mark the element `.figure` and the placeholder comes free: an
+empty `.figure` renders a pulsing, figure-shaped block sized in `ch`, and stops
+the moment its writer sets `textContent`. No per-component rule required.
+
+Live examples ship in the shell: every ledger figure, every channel count and
+every tier count carries `.figure` and holds a placeholder until its writer
+(`main.ts` for `#total`; the small boot module in `index.html`, reading
+`src/catalogue.ts`, for the rest) fills it in, and `#app` holds a skeleton
+section — heading, count pill and a four-card grid whose cards carry a title,
+channel-dot meta row and link line — that `main.ts` replaces wholesale on its
+first render.
 
 ### Mount points
 

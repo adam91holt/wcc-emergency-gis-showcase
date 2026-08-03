@@ -279,7 +279,7 @@ button {
 .button:active {
   color: var(--accent-fg);
   background: var(--accent-pressed);
-  transform: translateY(var(--border-width));
+  transform: translateY(var(--border-width)) scale(0.98);
 }
 
 /* Quiet variant — chrome affordances that must not compete with the accent. */
@@ -443,11 +443,13 @@ html[data-theme="dark"] .theme-toggle__icon--moon {
 }
 
 /* A placeholder shaped exactly like a .ds card, so the grid does not reflow
- * when main.ts swaps the real catalogue in. */
+ * when main.ts swaps the real catalogue in. Deliberately gap-less: .ds itself
+ * has no gap either — its rhythm comes from .meta's own margins, which
+ * .skeleton-card__meta mirrors below. A gap here would make the placeholder
+ * taller than the card it stands in for. */
 .skeleton-card {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
   padding: var(--space-4);
   padding-inline-start: calc(var(--space-4) + var(--edge-width));
   background: var(--surface-2);
@@ -914,7 +916,7 @@ main > * + * {
 
 .channel__track {
   grid-area: track;
-  block-size: var(--rule-width);
+  block-size: var(--bar-height);
   border-radius: var(--radius-full);
   background: var(--surface-inset);
   overflow: hidden;
@@ -1081,7 +1083,8 @@ main > * + * {
   background: var(--surface-3);
   border-color: var(--border-strong);
   border-inline-start-color: var(--scope-color, var(--border-strong));
-  transform: translateY(calc(-1 * var(--border-width)));
+  box-shadow: var(--shadow-md);
+  transform: translateY(calc(-1 * var(--lift-1)));
 }
 
 .ds h3 {
@@ -1230,7 +1233,7 @@ main > * + * {
 @keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(var(--rule-width));
+    transform: translateY(var(--lift-2));
   }
   to {
     opacity: 1;
