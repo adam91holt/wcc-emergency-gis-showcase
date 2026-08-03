@@ -27,8 +27,14 @@
 
 html {
   -webkit-text-size-adjust: 100%;
-  /* Nothing in the shell may cause a sideways scroll at 360px. */
-  overflow-x: hidden;
+  /* No blanket overflow-x guard here: setting it on `html` would force the
+   * root into a scroll container (the UA must then compute overflow-y too),
+   * which disables `position: sticky` for every descendant in the document —
+   * a trap for every downstream ticket that adds a sticky filter bar or panel
+   * header. At 360px the shell already has no horizontal overflow to hide:
+   * `min-width: 0` on .search/.ds/.brand__text/.channel__text and
+   * `overflow-wrap: anywhere` on .ds h3 (below) prevent it at the source
+   * instead of clipping it after the fact. */
 }
 
 body {
@@ -633,10 +639,14 @@ main > *,
   color: var(--accent);
 }
 
-/* main.ts writes the real total into #total once the catalogue module has
- * evaluated. Until then the element is genuinely empty, and this renders a
- * figure-shaped placeholder rather than a dash or a blank. */
-#total:empty::before {
+/* main.ts writes the real total into #total, and the boot module in
+ * index.html writes the catalogue-derived counts into #channels-total and
+ * #tiers-total, once their respective data has evaluated. Until then each
+ * element is genuinely empty, and this renders a figure-shaped placeholder
+ * rather than a dash or a blank. */
+#total:empty::before,
+#channels-total:empty::before,
+#tiers-total:empty::before {
   content: "";
   display: inline-block;
   inline-size: 2ch;
@@ -824,6 +834,15 @@ main > * + * {
  * Catalogue: theme sections + dataset card grid (rendered by main.ts)
  * ====================================================================== */
 
+/* #app's own element is never replaced — only its innerHTML, on every
+ * keystroke in the search field (see main.ts). Putting the entrance motion
+ * here (rather than on the per-card `.ds` elements the innerHTML swap
+ * recreates) means the catalogue fades+rises exactly once, on first paint,
+ * instead of restarting on every character typed. */
+#app {
+  animation: rise var(--duration-slow) var(--ease-out) both;
+}
+
 #app > section + section {
   margin-top: var(--space-7);
 }
@@ -875,24 +894,20 @@ main > * + * {
   border-inline-start: var(--edge-width) solid var(--scope-color, var(--border-strong));
   border-radius: var(--radius-md);
   transition: var(--transition-colors), var(--transition-transform);
-  /* `backwards` (not `both`): the from-state needs to hold during the
-   * staggered entry delay, but once the animation completes it must stop
-   * contributing to the cascade. The Animations cascade origin outranks a
-   * normal author declaration regardless of specificity, so a `forwards`
-   * (or `both`) fill would pin `transform: translateY(0)` here forever and
-   * permanently defeat `.ds:hover`'s own `transform` below. */
-  animation: rise var(--duration-base) var(--ease-out) backwards;
 }
 
-.ds[data-scope="wcc"] {
+.ds[data-scope="wcc"],
+.skeleton-card[data-scope="wcc"] {
   --scope-color: var(--scope-wcc);
 }
 
-.ds[data-scope="regional"] {
+.ds[data-scope="regional"],
+.skeleton-card[data-scope="regional"] {
   --scope-color: var(--scope-regional);
 }
 
-.ds[data-scope="national"] {
+.ds[data-scope="national"],
+.skeleton-card[data-scope="national"] {
   --scope-color: var(--scope-national);
 }
 
@@ -901,24 +916,6 @@ main > * + * {
   border-color: var(--border-strong);
   border-inline-start-color: var(--scope-color, var(--border-strong));
   transform: translateY(calc(-1 * var(--border-width)));
-}
-
-/* Stagger the first screenful of cards as they land together; beyond that the
- * extra delay would only make scrolling feel laggy, so it caps out. */
-.grid > .ds:nth-child(2) {
-  animation-delay: calc(1 * var(--stagger-step));
-}
-.grid > .ds:nth-child(3) {
-  animation-delay: calc(2 * var(--stagger-step));
-}
-.grid > .ds:nth-child(4) {
-  animation-delay: calc(3 * var(--stagger-step));
-}
-.grid > .ds:nth-child(5) {
-  animation-delay: calc(4 * var(--stagger-step));
-}
-.grid > .ds:nth-child(n + 6) {
-  animation-delay: calc(5 * var(--stagger-step));
 }
 
 .ds h3 {
@@ -1079,7 +1076,9 @@ main > * + * {
     display: none;
   }
 
-  #total:empty::before {
+  #total:empty::before,
+  #channels-total:empty::before,
+  #tiers-total:empty::before {
     animation: none;
   }
 }

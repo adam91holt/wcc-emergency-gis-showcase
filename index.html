@@ -11,15 +11,14 @@
     <title>Hazard Board — Wellington Emergency Management GIS</title>
 
     <!-- Paired type: Space Grotesk carries headings and chrome, Inter carries
-         prose, IBM Plex Mono carries every figure. Loaded as one request; each
-         stack in theme.css falls back to a real local face if this fails. -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap"
-    />
-
+         prose, IBM Plex Mono carries every figure. Self-hosted per house style
+         (no third-party font CDN in front of first paint, no font-request
+         logging by a third party): each stack in theme.css is built entirely
+         from local/system faces, so there is no network request to fail or
+         to block on. If real Space Grotesk / Inter / IBM Plex Mono weights are
+         vendored later, add `@font-face` + `font-display: swap` rules in
+         theme.css pointing at `public/fonts/*.woff2` — do not reach for a CDN
+         `<link>` here again. -->
     <link rel="stylesheet" href="/src/style.css" />
 
     <!-- Theme boot. Runs before first paint so an explicitly chosen theme never
@@ -112,6 +111,9 @@
         <path d="M20 4 11 13" />
         <path d="M18 14.5V19a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 19V7.5A1.5 1.5 0 0 1 5.5 6H10" />
       </symbol>
+      <symbol id="icon-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6 9l6 6 6-6" />
+      </symbol>
     </svg>
 
     <header class="masthead">
@@ -182,11 +184,16 @@
             </div>
             <div class="ledger__stat">
               <dt class="stat__label">Channels</dt>
-              <dd class="stat__value">7</dd>
+              <!-- Derived from catalogue.ts (themes().length) by the boot
+                   module below rather than hardcoded, so this stays true if
+                   the upstream catalogue ever adds or retires a theme. -->
+              <dd class="stat__value"><span id="channels-total"></span></dd>
             </div>
             <div class="ledger__stat">
               <dt class="stat__label">Tiers</dt>
-              <dd class="stat__value">3</dd>
+              <!-- Derived from catalogue.ts (scopes().length) for the same
+                   reason as Channels, above. -->
+              <dd class="stat__value"><span id="tiers-total"></span></dd>
             </div>
           </dl>
         </div>
@@ -212,54 +219,15 @@
         </div>
 
         <div class="hero__keys">
-          <div class="hero__key-group">
-            <p class="eyebrow" id="channel-key-label">Hazard channels</p>
-            <ul class="channel-index" aria-labelledby="channel-key-label">
-              <li class="channel" style="--channel-color: var(--hazard-coastal_inundation)">
-                <span class="channel__text">
-                  <span class="channel__name">Coastal Inundation</span>
-                  <span class="channel__key">coastal_inundation</span>
-                </span>
-              </li>
-              <li class="channel" style="--channel-color: var(--hazard-flood)">
-                <span class="channel__text">
-                  <span class="channel__name">Flood Data</span>
-                  <span class="channel__key">flood</span>
-                </span>
-              </li>
-              <li class="channel" style="--channel-color: var(--hazard-landslide)">
-                <span class="channel__text">
-                  <span class="channel__name">Landslides</span>
-                  <span class="channel__key">landslide</span>
-                </span>
-              </li>
-              <li class="channel" style="--channel-color: var(--hazard-earthquake)">
-                <span class="channel__text">
-                  <span class="channel__name">Earthquake Hazard</span>
-                  <span class="channel__key">earthquake</span>
-                </span>
-              </li>
-              <li class="channel" style="--channel-color: var(--hazard-sea_level_rise)">
-                <span class="channel__text">
-                  <span class="channel__name">Sea Level Rise</span>
-                  <span class="channel__key">sea_level_rise</span>
-                </span>
-              </li>
-              <li class="channel" style="--channel-color: var(--hazard-climate)">
-                <span class="channel__text">
-                  <span class="channel__name">Climate Data</span>
-                  <span class="channel__key">climate</span>
-                </span>
-              </li>
-              <li class="channel" style="--channel-color: var(--hazard-other)">
-                <span class="channel__text">
-                  <span class="channel__name">Other Useful Data</span>
-                  <span class="channel__key">other</span>
-                </span>
-              </li>
-            </ul>
-          </div>
-
+          <!-- The hazard-channel hues (theme.css --hazard-*) are deliberately
+               not previewed here: this seed's card list only carries a
+               `data-scope` edge stripe (decoded by the key below), not a
+               per-theme channel colour, so a channel legend on this page
+               would decode a system with no visible instance to point at.
+               The tokens are landed and documented in design-tokens.md for
+               the map/filters/charts tickets, which do apply --hazard-* to
+               real UI (map layers, filter chips) — surface the legend there,
+               next to the colour it actually explains. -->
           <div class="hero__key-group">
             <p class="eyebrow" id="scope-key-label">Publishing tier — the stripe on each card</p>
             <ul class="scope-key" aria-labelledby="scope-key-label">
@@ -358,5 +326,19 @@
     </footer>
 
     <script type="module" src="/src/main.ts"></script>
+
+    <!-- Tiny boot module for the ledger's Channels/Tiers figures only — kept
+         separate from main.ts (which owns the catalogue card list and search)
+         so that file never needs reopening for shell chrome. Reads the same
+         catalogue.ts selectors main.ts itself uses, so these two counts can
+         never drift out of sync with the bundled data the way a hardcoded
+         literal would. -->
+    <script type="module">
+      import { themes, scopes } from "/src/catalogue.ts";
+      const channelsEl = document.querySelector("#channels-total");
+      const tiersEl = document.querySelector("#tiers-total");
+      if (channelsEl) channelsEl.textContent = String(themes().length);
+      if (tiersEl) tiersEl.textContent = String(scopes().length);
+    </script>
   </body>
 </html>

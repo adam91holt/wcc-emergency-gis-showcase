@@ -39,14 +39,24 @@
   color-scheme: dark;
 
   /* ==== TYPE: three families, four weights, one modular scale =============
-   * --font-display carries headings and chrome. Space Grotesk's flat
-   * terminals and squared bowls read as technical/cartographic, which is the
-   * point — it is the voice of the board.
-   * --font-sans carries prose.
-   * --font-mono carries every figure, id and code path so digits stay tabular
-   * and never jitter as the catalogue re-renders on each keystroke.
-   * Loaded via <link> in index.html; each stack degrades to a real local face.
-   */
+   * --font-display carries headings and chrome; a technical/cartographic
+   * display face is the intent (Space Grotesk was the pick), which is why it
+   * still leads its stack below. --font-sans carries prose (Inter). --font-mono
+   * carries every figure, id and code path so digits stay tabular and never
+   * jitter as the catalogue re-renders on each keystroke (IBM Plex Mono).
+   *
+   * Self-hosted, not CDN-loaded: house style requires fonts be self-hosted,
+   * and there is no `public/fonts/` bundle in this repo yet, so none of the
+   * three named faces is actually fetched anywhere — index.html carries no
+   * font <link> at all. Each stack therefore currently resolves to its first
+   * installed system face (Segoe UI Variable Display / ui-sans-serif /
+   * ui-monospace and friends), which is a deliberate, considered choice
+   * rather than an accident: a system face on first paint beats a
+   * render-blocking third-party request or a flash of unstyled type. To
+   * bring the named faces back, vendor their woff2 weights into
+   * `public/fonts/`, add matching `@font-face` rules with `font-display:
+   * swap` here, and preload the two above-the-fold weights from
+   * index.html — never re-add a Google Fonts <link>. */
   --font-display: "Space Grotesk", "Segoe UI Variable Display", "Segoe UI",
     system-ui, sans-serif;
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",

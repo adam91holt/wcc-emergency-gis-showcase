@@ -135,10 +135,17 @@ el.style.setProperty(
 
 `--hazard-other` is the intended home for anything outside the seven named
 themes, so route null-theme (uncategorised/national) rows there rather than
-inventing an eighth hue — the hero's channel index and the masthead's
-"Channels: 7" figure both describe the seven themed channels only, and
-`--hazard-other` is what keeps an unthemed row visually consistent with them
-instead of falling through to an undefined custom property.
+inventing an eighth hue — the masthead's "Channels" figure (derived from
+`themes().length`, not hardcoded) describes the seven themed channels only,
+and `--hazard-other` is what keeps an unthemed row visually consistent with
+them instead of falling through to an undefined custom property.
+
+**No hazard-channel legend ships in this shell.** These hues have no visible
+instance on the page yet — this seed's cards carry only a `data-scope` edge
+stripe, not a per-theme colour — so a decode-this-colour-system key here would
+teach a code with nothing to point at. Land the legend next to the first
+surface that actually paints with `--hazard-*` (the map's layer list or the
+filter chips), not in the shared shell.
 
 `--hazard-coastal_inundation`, `--hazard-flood`, `--hazard-landslide`,
 `--hazard-earthquake`, `--hazard-sea_level_rise`, `--hazard-climate`,
@@ -169,8 +176,11 @@ Three families, a real hierarchy, and a strict rule about which does what.
 | `--font-sans` | Inter | Prose and body copy |
 | `--font-mono` | IBM Plex Mono | Every figure, id, service path and code token |
 
-Loaded via a single `<link>` in `index.html`; each stack falls back to a real
-local face if that request fails.
+Self-hosted per house style — there is no font `<link>` in `index.html` and no
+third-party font CDN in the request path. Until the named weights are vendored
+into `public/fonts/` with matching `@font-face` rules, each stack resolves to
+its first installed system face, which is the deliberate current state, not a
+fallback-on-failure.
 
 ### Scale
 
@@ -321,9 +331,11 @@ not jump when content lands — never a bare spinner, a blank flash, or a
 panel; `.skeleton-card` already matches a `.ds` card exactly. The sheen is a
 `translateX` on a pseudo-element, so it stays on the compositor.
 
-Two live examples ship in the shell: the `#total` figure renders a
-figure-shaped placeholder until `main.ts` writes the real count, and `#app`
-holds a four-card skeleton grid that `main.ts` replaces wholesale on its first
+Live examples ship in the shell: the `#total`, `#channels-total` and
+`#tiers-total` ledger figures each render a figure-shaped placeholder until
+their writer (`main.ts` for `#total`; the small boot module in `index.html`,
+reading `src/catalogue.ts`, for the other two) fills them in, and `#app` holds
+a four-card skeleton grid that `main.ts` replaces wholesale on its first
 render.
 
 ### Mount points
