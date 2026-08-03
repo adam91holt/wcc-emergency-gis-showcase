@@ -768,15 +768,40 @@ main > * + * {
   margin-top: var(--space-6);
 }
 
-/* ---- Hero keys: the colour legend, always visible on first paint --------
+/* ---- Hero keys: the colour legend ---------------------------------------
  * The scope stripe on each card and the hazard-channel read-out are the
- * board's core visual grammar, so the panel that decodes them is plain, not
- * a disclosure — a new reader needs it the instant the card grid appears.
- * Kept dense (a ruled chip grid, not prose) so it earns its place above the
- * fold without becoming a landing-page-sized hero. Gets the same entrance
- * rise as the rest of the shell. */
+ * board's core visual grammar. From 40rem there is room to show the decoder
+ * beside the catalogue, so the panel is plain, not a real disclosure: the
+ * summary row goes inert (`pointer-events: none`, no chevron, no hover) and
+ * the tiny script after this element in index.html has left it `open` — a
+ * new reader sees it the instant the card grid appears. Below 40rem the same
+ * seven-plus channel rows plus the scope key would stack into a wall that
+ * pushes the searchable catalogue off the first screen, so there it is a
+ * real, user-operable `<details>`: closed by that same script before first
+ * paint, one tap from open. Kept dense (a ruled chip grid, not prose) either
+ * way, so open or closed it never reads as a landing-page-sized hero. Gets
+ * the same entrance rise as the rest of the shell. */
 .hero-keys {
+  padding: 0;
+  overflow: hidden;
   animation: rise var(--duration-slow) var(--ease-out) both;
+}
+
+/* ≥ 40rem: a static panel, not a control — the summary row cannot be toggled
+ * and shows no affordance to try. */
+@media (min-width: 40rem) {
+  .hero-keys > summary {
+    cursor: default;
+    pointer-events: none;
+  }
+
+  .hero-keys .hero__chevron {
+    display: none;
+  }
+}
+
+.hero-keys[open] > summary {
+  border-bottom: var(--border-width) solid var(--border);
 }
 
 .hero-keys__body {
@@ -784,6 +809,7 @@ main > * + * {
   flex-direction: column;
   gap: var(--space-4);
   padding: var(--space-5);
+  animation: hero-reveal var(--duration-slow) var(--ease-out) both;
 }
 
 /* The two key groups — the hazard-channel read-out and the tier key. Stacked
@@ -866,7 +892,8 @@ main > * + * {
   transition: transform var(--duration-base) var(--ease-spring);
 }
 
-.hero[open] .hero__chevron {
+.hero[open] .hero__chevron,
+.hero-keys[open] .hero__chevron {
   transform: rotate(180deg);
 }
 

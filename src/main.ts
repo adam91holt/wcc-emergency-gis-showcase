@@ -59,7 +59,13 @@ function renderAllMounts(state: RouteState): void {
 }
 
 function card(d: Dataset): string {
-  const link = d.url ? `<a href="${d.url}" target="_blank" rel="noreferrer">source ↗</a>` : "";
+  // Uses the shell's single icon sprite (see index.html's <svg class="icon-sprite">)
+  // rather than a text arrow, so this link gets the same glyph, baseline and
+  // hover motion as every other external link in the product (footer sources,
+  // .ds a .icon in style.css already assumes an <svg class="icon"> is here).
+  const link = d.url
+    ? `<a href="${d.url}" target="_blank" rel="noreferrer">source <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-external" /></svg></a>`
+    : "";
   return `<article class="ds" data-scope="${d.scope}">
     <h3>${label(d)}</h3>
     <p class="meta">${d.scope} · ${d.authority ?? "—"}${d.year ? ` · ${d.year}` : ""}</p>

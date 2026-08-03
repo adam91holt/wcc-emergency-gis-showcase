@@ -10,15 +10,19 @@
     />
     <title>Hazard Board — Wellington Emergency Management GIS</title>
 
-    <!-- Paired type: Space Grotesk carries headings and chrome, Inter carries
-         prose, IBM Plex Mono carries every figure. Self-hosted per house style
-         (no third-party font CDN in front of first paint, no font-request
-         logging by a third party): each stack in theme.css is built entirely
-         from local/system faces, so there is no network request to fail or
-         to block on. If real Space Grotesk / Inter / IBM Plex Mono weights are
-         vendored later, add `@font-face` + `font-display: swap` rules in
-         theme.css pointing at `public/fonts/*.woff2` — do not reach for a CDN
-         `<link>` here again. -->
+    <!-- Paired type: a serif display face carries headings and chrome, a sans
+         face carries prose, a mono face carries every figure — see the TYPE
+         block at the top of theme.css for why each stack leads toward a
+         generic (serif / sans-serif / monospace) rather than a named face
+         with nothing behind it: named faces are still tried first, but the
+         three stacks are guaranteed to render as genuinely different
+         families even where none of the named ones are installed (this repo
+         has no `public/fonts/`, no font <link>, and no font CDN — nothing is
+         self-hosted or fetched, so there is no network request to fail or to
+         block on). If real weights are vendored later, add `@font-face` +
+         `font-display: swap` rules in theme.css pointing at
+         `public/fonts/*.woff2`, and lead each stack with the vendored name —
+         do not reach for a CDN `<link>` here. -->
     <link rel="stylesheet" href="/src/style.css" />
 
     <!-- Theme boot. Runs before first paint so an explicitly chosen theme never
@@ -204,70 +208,72 @@
     <main>
       <!-- The colour key is the board's core visual grammar — the scope
            stripe on every card and the hazard channel hues used throughout
-           the board — so it renders open on first paint instead of behind a
-           disclosure: a new reader needs it the moment the card grid
-           appears, not one tap later. It stays a dense, ruled chip grid (not
-           prose), so it earns its place above the fold without reintroducing
-           a landing-page-sized hero. -->
-      <section class="hero-keys panel" aria-labelledby="hero-keys-title">
+           the board — so on a screen wide enough to show it alongside the
+           catalogue (≥ 40rem, see .hero-keys[open] > summary in style.css)
+           it renders open and its summary row is inert: a new reader needs
+           it the moment the card grid appears, not one tap later. Below
+           that width the seven-plus channel rows, the scope key and the
+           About disclosure would otherwise stack into a wall that pushes
+           #app off the first screen, so on narrow viewports this is a real,
+           user-operable disclosure — closed by the tiny synchronous script
+           just after it, before first paint, and re-openable with one tap. -->
+      <details class="hero-keys panel" id="hero-keys" aria-labelledby="hero-keys-title" open>
+        <summary class="hero__summary">
+          <span class="hero__summary-text">
+            <span class="eyebrow" id="hero-keys-title">Reading the board</span>
+            <span class="panel-hint">
+              How the tier stripe on each card reads, and what each hazard channel colour means
+            </span>
+          </span>
+          <svg class="icon hero__chevron" aria-hidden="true" focusable="false">
+            <use href="#icon-chevron" />
+          </svg>
+        </summary>
         <div class="hero-keys__body">
-          <p class="eyebrow" id="hero-keys-title">Reading the board</p>
-          <p class="panel-hint">
-            How the tier stripe on each card reads, and what each hazard channel colour means
-          </p>
-
           <div class="hero-keys__groups">
-            <!-- Not a legend: a read-out. Every figure and every bar length below
-                 is written by the boot module at the foot of this file from the
-                 bundled catalogue (themes() / scopes()), so this block states the
-                 real shape of the data — which channel dominates, how thin the
-                 climate series are — while also teaching the colour system the
-                 map, filters and charts tickets consume. The channel rows are in
-                 the catalogue's own first-seen theme order; bar length is the
-                 channel's share of the largest channel. -->
+            <!-- Not a legend: a read-out. This list has no children at rest —
+                 every row, count and bar is built by the boot module at the foot
+                 of this file, one row per entry in themes(), so an added/removed/
+                 renamed theme in the bundled catalogue changes this list without
+                 anyone re-opening this file. Each row's colour comes from
+                 `var(--hazard-<theme>, var(--hazard-other))`, so a future theme
+                 with no dedicated hue yet still renders (falls back to the
+                 neutral channel) instead of showing an unset colour. The channel
+                 rows land in the catalogue's own first-seen theme order; bar
+                 length is the channel's share of the largest channel. -->
             <div class="hero-keys__group">
               <p class="eyebrow" id="channel-key-label">Datasets per hazard channel</p>
-              <ul class="channel-index" aria-labelledby="channel-key-label">
-                <li class="channel" style="--channel-color: var(--hazard-coastal_inundation)">
-                  <span class="channel__name">Coastal Inundation</span>
-                  <span class="channel__count figure" data-channel-count="coastal_inundation"></span>
-                  <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
+              <!-- Generic skeleton rows — not shaped from the catalogue, on
+                   purpose: three placeholders of no particular theme, cleared
+                   wholesale (list.innerHTML = "") the instant the boot module
+                   below has real rows to append, same convention as #app's own
+                   skeleton section. A shape borrowed from the data (e.g. seven
+                   rows) is exactly the bug this list used to have — it must be
+                   able to shrink, grow or relabel with the catalogue, and a
+                   placeholder that already looks like a specific answer would
+                   quietly reintroduce that. -->
+              <ul class="channel-index" id="channel-index" aria-labelledby="channel-key-label">
+                <li class="channel" aria-hidden="true">
+                  <span class="channel__name skeleton skeleton--text" style="inline-size: 70%"></span>
+                  <span class="channel__count skeleton skeleton--text" style="inline-size: 1.5rem"></span>
+                  <span class="channel__track"><span class="skeleton" style="display: block; inline-size: 60%; block-size: 100%; border-radius: inherit;"></span></span>
                 </li>
-                <li class="channel" style="--channel-color: var(--hazard-flood)">
-                  <span class="channel__name">Flood Data</span>
-                  <span class="channel__count figure" data-channel-count="flood"></span>
-                  <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
+                <li class="channel" aria-hidden="true">
+                  <span class="channel__name skeleton skeleton--text" style="inline-size: 50%"></span>
+                  <span class="channel__count skeleton skeleton--text" style="inline-size: 1.5rem"></span>
+                  <span class="channel__track"><span class="skeleton" style="display: block; inline-size: 85%; block-size: 100%; border-radius: inherit;"></span></span>
                 </li>
-                <li class="channel" style="--channel-color: var(--hazard-landslide)">
-                  <span class="channel__name">Landslides</span>
-                  <span class="channel__count figure" data-channel-count="landslide"></span>
-                  <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
-                </li>
-                <li class="channel" style="--channel-color: var(--hazard-earthquake)">
-                  <span class="channel__name">Earthquake Hazard</span>
-                  <span class="channel__count figure" data-channel-count="earthquake"></span>
-                  <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
-                </li>
-                <li class="channel" style="--channel-color: var(--hazard-sea_level_rise)">
-                  <span class="channel__name">Sea Level Rise</span>
-                  <span class="channel__count figure" data-channel-count="sea_level_rise"></span>
-                  <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
-                </li>
-                <li class="channel" style="--channel-color: var(--hazard-climate)">
-                  <span class="channel__name">Climate Data</span>
-                  <span class="channel__count figure" data-channel-count="climate"></span>
-                  <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
-                </li>
-                <li class="channel" style="--channel-color: var(--hazard-other)">
-                  <span class="channel__name">Other Useful Data</span>
-                  <span class="channel__count figure" data-channel-count="other"></span>
-                  <span class="channel__track" aria-hidden="true"><span class="channel__bar"></span></span>
+                <li class="channel" aria-hidden="true">
+                  <span class="channel__name skeleton skeleton--text" style="inline-size: 60%"></span>
+                  <span class="channel__count skeleton skeleton--text" style="inline-size: 1.5rem"></span>
+                  <span class="channel__track"><span class="skeleton" style="display: block; inline-size: 35%; block-size: 100%; border-radius: inherit;"></span></span>
                 </li>
               </ul>
               <p class="channel-note">
                 <span class="figure" id="untyped-total"></span> national layers carry no hazard
                 theme of their own: they group under <em>Uncategorised</em> in the catalogue
-                below and ride the neutral Other channel.
+                below, and are counted here inside the neutral Other channel's figure and bar
+                rather than silently dropped from the read-out.
               </p>
             </div>
 
@@ -293,7 +299,24 @@
             </div>
           </div>
         </div>
-      </section>
+      </details>
+
+      <!-- Closes .hero-keys on narrow viewports before first paint, the same
+           way the head's theme-boot script sets data-theme before first
+           paint: a synchronous classic script placed immediately after the
+           element it targets, so it runs the instant that element exists
+           rather than waiting for the whole document (and every image) to
+           load. ≥ 40rem keeps the panel open and non-collapsible (see
+           style.css); below that it starts closed and stays a real,
+           user-operable disclosure. -->
+      <script>
+        (function () {
+          var details = document.getElementById("hero-keys");
+          if (details && window.matchMedia && !window.matchMedia("(min-width: 40rem)").matches) {
+            details.removeAttribute("open");
+          }
+        })();
+      </script>
 
       <!-- The longer explanation — who publishes the data and how the
            catalogue is structured — stays a disclosure, closed on first
@@ -447,17 +470,57 @@
       setFigure("#channels-total", channels.length);
       setFigure("#tiers-total", tiers.length);
 
-      // The largest channel defines full-bar; every other bar is drawn as its
-      // share of that, which is what makes the row lengths comparable.
-      const busiest = Math.max(...channels.map((c) => c.count));
-      let themed = 0;
+      // Datasets with no hazard theme at all (the national-scope layers) are
+      // stated explicitly rather than silently missing from the read-out.
+      const themedTotal = channels.reduce((n, c) => n + c.count, 0);
+      const untypedTotal = catalogue.counts.total - themedTotal;
+      setFigure("#untyped-total", untypedTotal);
+
+      // The read-out's copy says the untyped national rows "ride the neutral
+      // Other channel", so that channel's own figure and bar must actually
+      // include them — otherwise the note and the number it sits beside
+      // disagree. Every other channel is displayed exactly as themes() reports
+      // it.
+      const displayChannels = channels.map((c) =>
+        c.theme === "other" ? { ...c, count: c.count + untypedTotal } : c,
+      );
+
+      // The largest displayed channel defines full-bar; every other bar is
+      // drawn as its share of that, which is what makes the row lengths
+      // comparable to each other.
+      const busiest = Math.max(...displayChannels.map((c) => c.count));
+      const list = document.querySelector("#channel-index");
+      // Wholesale-replace the generic skeleton rows, same convention #app
+      // uses for its own skeleton section below.
+      if (list) list.innerHTML = "";
       const rows = [];
 
-      for (const { theme, count } of channels) {
-        themed += count;
-        setFigure(`[data-channel-count="${theme}"]`, count);
-        const row = document.querySelector(`[data-channel-count="${theme}"]`)?.closest(".channel");
-        if (row) rows.push([row, count / busiest]);
+      for (const { theme, theme_label, count } of list ? displayChannels : []) {
+        const row = document.createElement("li");
+        row.className = "channel";
+        // A theme with no dedicated hazard hue yet still renders correctly:
+        // the CSS custom-property fallback lands on the neutral channel
+        // colour instead of an unset custom property.
+        row.style.setProperty("--channel-color", `var(--hazard-${theme}, var(--hazard-other))`);
+
+        const name = document.createElement("span");
+        name.className = "channel__name";
+        name.textContent = theme_label;
+
+        const countEl = document.createElement("span");
+        countEl.className = "channel__count figure";
+        countEl.textContent = String(count);
+
+        const track = document.createElement("span");
+        track.className = "channel__track";
+        track.setAttribute("aria-hidden", "true");
+        const bar = document.createElement("span");
+        bar.className = "channel__bar";
+        track.appendChild(bar);
+
+        row.append(name, countEl, track);
+        list.appendChild(row);
+        rows.push([row, count / busiest]);
       }
 
       // The bars grow from scaleX(0) to their real share. The share is set a
@@ -471,10 +534,6 @@
           for (const [row, share] of rows) row.style.setProperty("--share", String(share));
         });
       });
-
-      // Datasets with no hazard theme at all (the national-scope layers) are
-      // stated explicitly rather than silently missing from the read-out.
-      setFigure("#untyped-total", catalogue.counts.total - themed);
 
       for (const { scope, count } of tiers) {
         setFigure(`[data-scope-count="${scope}"]`, count);

@@ -142,12 +142,22 @@ them instead of falling through to an undefined custom property.
 
 **Where the channel hues already paint.** One place in the shell so far, so
 the colour code is taught and used rather than merely declared: the briefing's
-channel read-out (`.channel-index`), whose counts and bar lengths come from
-`themes()` at runtime. (A per-card channel marker is a natural next step, but
-it belongs to `main.ts`'s `card()` renderer, which is out of scope for this
-ticket — see the map/filters/charts tickets.) When your feature paints with
-`--hazard-*` — a map layer list, a filter chip, a chart series — reuse the
-same hue for the same theme and it will already agree with the shell.
+channel read-out (`.channel-index`). Its rows aren't in the markup at all —
+the boot module in `index.html` builds one `<li>` per entry in `themes()` (a
+generic, catalogue-shaped skeleton occupies the list until then), so an
+added, removed or relabelled theme changes this list with no HTML edit. Every
+row's colour is set as `var(--hazard-<theme>, var(--hazard-other))`, the same
+CSS-level fallback described above, so a theme with no dedicated hue yet still
+renders. The "Other Useful Data" row's displayed count and bar length are the
+one exception to "straight from `themes()`": they also fold in the null-theme
+(national, untyped) rows per the guidance above, since the copy beside the
+read-out states that those rows ride this channel — the figure has to agree
+with the sentence next to it. (A per-card channel marker is a natural next
+step, but it belongs to `main.ts`'s `card()` renderer, which is out of scope
+for this ticket — see the map/filters/charts tickets.) When your feature
+paints with `--hazard-*` — a map layer list, a filter chip, a chart series —
+reuse the same hue for the same theme and it will already agree with the
+shell.
 
 `--hazard-coastal_inundation`, `--hazard-flood`, `--hazard-landslide`,
 `--hazard-earthquake`, `--hazard-sea_level_rise`, `--hazard-climate`,
@@ -174,20 +184,30 @@ Three families, a real hierarchy, and a strict rule about which does what.
 
 | Token | Family | Carries |
 | --- | --- | --- |
-| `--font-display` | `ui-rounded` → Segoe UI Variable Display → `system-ui` | Headings, chrome, eyebrows, buttons, card titles |
-| `--font-sans` | `ui-sans-serif` → `system-ui` → Segoe UI / Roboto / Helvetica | Prose and body copy |
-| `--font-mono` | IBM Plex Mono → `ui-monospace` → SF Mono / Cascadia / Menlo | Every figure, id, service path and code token |
+| `--font-display` | Georgia / Iowan Old Style / Noto Serif / Liberation Serif → `serif` | Headings, chrome, eyebrows, buttons, card titles |
+| `--font-sans` | -apple-system / Segoe UI / Roboto / Noto Sans / Liberation Sans → `sans-serif` | Prose and body copy |
+| `--font-mono` | IBM Plex Mono / SF Mono / Cascadia / Menlo → `monospace` | Every figure, id, service path and code token |
 
 Nothing is fetched: there is no font `<link>` in `index.html`, no `public/fonts/`
-bundle, and no third-party font CDN in the request path — so the display stack
-is built from families that are genuinely installed and genuinely *diverge*
-from the sans stack's resolution on the same machine (SF Pro Rounded vs SF Pro
-Text on Apple; the Variable Display cut vs plain Segoe UI on Windows 11). Where
-neither exists both converge on `system-ui`, and weight, size and tracking
-carry the hierarchy on their own. Do not lead either stack with a family name
-that has nothing behind it — if real faces are vendored later, add `@font-face`
-rules with `font-display: swap` in `theme.css`, preload the two above-the-fold
-weights, then put the vendored names at the head of the stack.
+bundle, and no third-party font CDN in the request path. Named faces are tried
+first as a free upgrade wherever they're installed, but each stack's *last*
+resort is a different generic CSS keyword (`serif` / `sans-serif` /
+`monospace`) rather than another named face or `system-ui` — that is what
+actually guarantees the display and body stacks render as different families
+everywhere, including on the plain Linux/CI rendering stack the board gets
+screenshotted on for review. An earlier revision led `--font-display` with
+`ui-rounded` / "Segoe UI Variable Display": real fonts, but ones that exist
+only on Apple/Windows and fall through to the *same* `system-ui` `--font-sans`
+also resolves to elsewhere, so outside those two platforms "paired type" was
+one face wearing two names. Generic keywords don't have that failure mode: the
+OS's own font-matching (fontconfig on Linux) is required to alias `serif` and
+`sans-serif` to different default faces, so the pairing survives even where
+every named entry above is missing. Do not lead any stack with a bare family
+name that has nothing behind it and no generic fallback under it — if real
+faces are vendored later, add `@font-face` rules with `font-display: swap` in
+`theme.css`, preload the two above-the-fold weights, then put the vendored
+names at the head of the stack (ahead of the named fallbacks, still above the
+generic).
 
 ### Scale
 
@@ -355,10 +375,13 @@ the moment its writer sets `textContent`. No per-component rule required.
 Live examples ship in the shell: every ledger figure, every channel count and
 every tier count carries `.figure` and holds a placeholder until its writer
 (`main.ts` for `#total`; the small boot module in `index.html`, reading
-`src/catalogue.ts`, for the rest) fills it in, and `#app` holds a skeleton
+`src/catalogue.ts`, for the rest) fills it in; `#app` holds a skeleton
 section — heading, count pill and a four-card grid whose cards carry a title,
-meta row and link line — that `main.ts` replaces wholesale on its
-first render.
+meta row and link line — that `main.ts` replaces wholesale on its first
+render; and `.channel-index` holds three generic placeholder rows (no
+particular theme — see [Hazard channels](#hazard-channels) for why the real
+rows must never be hardcoded) that the same boot module clears and rebuilds
+from `themes()`.
 
 ### Mount points
 

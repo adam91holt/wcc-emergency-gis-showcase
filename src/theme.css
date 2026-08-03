@@ -38,31 +38,46 @@
 :root {
   color-scheme: dark;
 
-  /* ==== TYPE: two real system stacks, deliberately divergent, one mono =====
-   * --font-display carries headings and chrome; --font-sans carries prose.
-   * There is no `public/fonts/` bundle in this repo and no font <link> in
-   * index.html — nothing is self-hosted or CDN-loaded, so a stack that
-   * *leads* with an unvendored family (e.g. "Space Grotesk") is decorative
-   * only: it never resolves, and if its fallback chain then reconverges with
-   * --font-sans's, headings and body silently render in the identical face.
-   * --font-display is therefore built from generic/system keywords that are
-   * real, installed, and genuinely distinct from --font-sans's resolution on
-   * the same machine: `ui-rounded` resolves to SF Pro Rounded on Apple
-   * platforms (vs. --font-sans's SF Pro Text/Helvetica Neue), and "Segoe UI
-   * Variable Display" is a real, distinct display cut of Segoe UI shipped
-   * with Windows 11 (vs. --font-sans's plain "Segoe UI"). Where neither
-   * matches (older Windows, most Linux), both stacks do converge on
-   * `system-ui` — weight/size/tracking on h1/h2/h3 (below) still carry the
-   * hierarchy there. If real display/body/mono weights are vendored later,
-   * add `@font-face` rules with `font-display: swap` here, preload the two
-   * above-the-fold weights from index.html, and lead these stacks with the
-   * vendored names — never a bare family name with nothing behind it. */
-  --font-display: ui-rounded, "Segoe UI Variable Display", "Segoe UI",
-    system-ui, sans-serif;
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    Helvetica, Arial, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", "Cascadia Code",
-    "Segoe UI Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  /* ==== TYPE: a genuinely distinct display/body/mono trio, no vendoring ===
+   * --font-display carries headings, chrome and eyebrows; --font-sans carries
+   * prose; --font-mono carries every figure. There is no `public/fonts/`
+   * bundle in this repo, no font <link> in index.html, and no font CDN — so
+   * every name below must resolve to a real, already-installed face, and the
+   * three stacks must actually diverge from one another *on the same
+   * machine*, including on the plain Linux/CI rendering stack this board is
+   * screenshotted on for review (typically fontconfig's `DejaVu`/`Liberation`
+   * aliases, neither of which has ever heard of "Space Grotesk" or a rounded
+   * or variable-display cut of anything).
+   *
+   * Earlier revisions tried to fake distinctiveness with OS-specific display
+   * cuts (`ui-rounded`, "Segoe UI Variable Display"): real fonts, but ones
+   * that only exist on Apple/Windows and silently fall through to the same
+   * `system-ui` the body stack resolves to everywhere else — on Linux/CI the
+   * "paired type" was actually one face wearing two names. Generic CSS
+   * font-family keywords (`serif` / `sans-serif` / `monospace`) are the one
+   * mechanism guaranteed to resolve to genuinely different installed
+   * families on every platform, including headless Linux, because the OS's
+   * own font-matching (fontconfig on Linux) is required to alias each one to
+   * a *different* default face. Named faces are still listed first, as a
+   * free upgrade wherever they happen to be present, but the stack is
+   * correct even where every named entry is missing.
+   *
+   * --font-display therefore leads toward `serif`: an authoritative,
+   * bulletin/report register that suits a wall display naming publishing
+   * agencies and hazard counts, and one that cannot converge with the
+   * body/mono stacks below. --font-sans and --font-mono are unchanged in
+   * spirit (sans prose, monospace figures) but no longer lead with a named
+   * face nothing backs. If real weights are vendored later (a `public/fonts/`
+   * directory + `@font-face` + `font-display: swap` here, preloaded from
+   * index.html), lead each stack with the vendored name — never a bare
+   * family name with nothing behind it, which is the exact mistake this
+   * revision fixes. */
+  --font-display: Georgia, "Iowan Old Style", "Noto Serif", "Liberation Serif",
+    serif;
+  --font-sans: -apple-system, "Segoe UI", Roboto, "Noto Sans",
+    "Liberation Sans", Helvetica, Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", "SF Mono", "Cascadia Code", "Segoe UI Mono",
+    Menlo, Consolas, "Liberation Mono", "Noto Sans Mono", monospace;
 
   /* Modular scale (~1.25). --text-2xs is reserved for the uppercase eyebrow
    * that titles every region — the single highest-leverage "designed" move. */
